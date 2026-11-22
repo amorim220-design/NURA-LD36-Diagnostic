@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dados AOA identificados na análise do Mirror. -->
+    <usb-accessory manufacturer="onebit" model="sagetech.onebit.onlymirror" version="1.0" />
+</resources>
