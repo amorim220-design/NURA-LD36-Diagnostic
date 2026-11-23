@@ -186,7 +186,6 @@ public final class MainActivity extends Activity {
             connectWithPermission();
             // Start countdown only after openAccessory() has succeeded.
             autoScanRequested = true;
-            if (running.get()) scheduleAutoStop(generation);
         });
 
         LinearLayout metricsCard = columnCard();
@@ -409,7 +408,7 @@ public final class MainActivity extends Activity {
         File destination = textFile;
         if (destination == null) return;
         try (FileOutputStream out = new FileOutputStream(destination, true)) {
-            out.write(("[FINAL] " + summary + "\\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            out.write(("[FINAL] " + summary + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
         } catch (IOException ignored) { }
     }
 
