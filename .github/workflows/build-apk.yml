@@ -33,6 +33,8 @@ jobs:
           mkdir -p /tmp/nura-test
           javac -encoding UTF-8 -d /tmp/nura-test app/src/main/java/com/nura/ld36diagnostic/ProtocolInspector.java tests/ProtocolInspectorSmokeTest.java
           java -cp /tmp/nura-test com.nura.ld36diagnostic.ProtocolInspectorSmokeTest
+          javac -encoding UTF-8 -d /tmp/nura-test app/src/main/java/com/nura/ld36diagnostic/StreamProbe.java tests/StreamProbeSmokeTest.java
+          java -cp /tmp/nura-test com.nura.ld36diagnostic.StreamProbeSmokeTest
       - name: Compile debug APK
         run: gradle --no-daemon :app:assembleDebug
       - name: Upload APK
