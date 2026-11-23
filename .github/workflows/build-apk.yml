@@ -2,7 +2,8 @@ name: Build APK - NURA LD36 Diagnostic
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, feature/diagnostico-passivo-completo]
+  pull_request:
 
 jobs:
   build:
