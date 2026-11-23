@@ -73,6 +73,9 @@ public final class MainActivity extends Activity {
     private TextView logView;
     private Button connectButton;
     private Button stopButton;
+    private static final long AUTO_SCAN_MS = 60_000L;
+    private boolean autoScanRequested = false;
+    private final android.os.Handler mainHandler = new android.os.Handler(android.os.Looper.getMainLooper());
 
     private final BroadcastReceiver usbEvents = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
@@ -166,13 +169,25 @@ public final class MainActivity extends Activity {
         Button scanButton = button("Detectar", PANEL, INK);
         connectButton = button("Conectar RX", ACCENT, BG);
         stopButton = button("Parar", PANEL, INK);
+        Button autoButton = button("Varredura 60s", PANEL, INK);
         stopButton.setEnabled(false);
         addButton(commands, scanButton);
         addButton(commands, connectButton);
         addButton(commands, stopButton);
+        addToRoot(root, autoButton, 8);
         scanButton.setOnClickListener(v -> discoverAccessory());
         connectButton.setOnClickListener(v -> connectWithPermission());
         stopButton.setOnClickListener(v -> stopCapture());
+        autoButton.setOnClickListener(v -> {
+            if (running.get()) {
+                appendLog("Já existe uma captura ativa. Pare-a antes da varredura automática.");
+                return;
+            }
+            connectWithPermission();
+            // Start countdown only after openAccessory() has succeeded.
+            autoScanRequested = true;
+            if (running.get()) scheduleAutoStop(generation);
+        });
 
         LinearLayout metricsCard = columnCard();
         addToRoot(root, metricsCard, 14);
@@ -240,6 +255,9 @@ public final class MainActivity extends Activity {
                 for (UsbDevice dev : devices.values()) {
                     details.append(String.format(Locale.US, "\nVID:%04X PID:%04X",
                             dev.getVendorId(), dev.getProductId()));
+                    details.append(" class=").append(dev.getDeviceClass())
+                            .append(" subclasses=").append(dev.getDeviceSubclass())
+                            .append(" interfaces=").append(dev.getInterfaceCount());
                 }
             }
             deviceView.setText(details.toString());
@@ -297,6 +315,7 @@ public final class MainActivity extends Activity {
             metricsView.setText("0 bytes  •  0 leituras USB");
             int session = ++generation;
             running.set(true);
+            if (autoScanRequested) scheduleAutoStop(session);
             setStatus("AOA aberto • capturando RX", ACCENT);
             connectButton.setEnabled(false);
             stopButton.setEnabled(true);
@@ -310,7 +329,19 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private void scheduleAutoStop(int session) {
+        autoScanRequested = false;
+        appendLog("Varredura automática: RX passivo durante 60 segundos.");
+        mainHandler.postDelayed(() -> {
+            if (generation == session && running.get()) {
+                appendLog("Varredura automática concluída após 60 segundos.");
+                stopCapture();
+            }
+        }, AUTO_SCAN_MS);
+    }
+
     private void captureLoop(int session, FileInputStream in, File targetRaw) {
+        StreamProbe probe = new StreamProbe();
         long bytes = 0;
         long reads = 0;
         boolean rawLimitLogged = false;
@@ -325,12 +356,16 @@ public final class MainActivity extends Activity {
                 if (count == 0) continue;
                 reads++;
                 bytes += count;
+                probe.add(buffer, count);
                 if (bytes - count < RAW_CAPTURE_LIMIT) {
                     int canWrite = (int) Math.min(count, RAW_CAPTURE_LIMIT - (bytes - count));
                     raw.write(buffer, 0, canWrite);
                 } else if (!rawLimitLogged) {
                     rawLimitLogged = true;
                     logFromWorker(session, "Limite de captura BIN (8 MiB) atingido; RX continua sem salvar bytes extras.");
+                }
+                if (reads <= 32 || reads % 25 == 0) {
+                    logFromWorker(session, probe.report());
                 }
                 final long byteCopy = bytes;
                 final long readCopy = reads;
@@ -355,6 +390,9 @@ public final class MainActivity extends Activity {
         } catch (RuntimeException e) {
             logFromWorker(session, "Falha de leitura: " + e.getClass().getSimpleName() + ": " + e.getMessage());
         } finally {
+            String summary = probe.report();
+            // Write summary directly to the session log even if generation changed on stop.
+            appendSessionSummary(summary);
             runOnUiThread(() -> {
                 if (session != generation) return;
                 running.set(false);
@@ -367,7 +405,16 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private void appendSessionSummary(String summary) {
+        File destination = textFile;
+        if (destination == null) return;
+        try (FileOutputStream out = new FileOutputStream(destination, true)) {
+            out.write(("[FINAL] " + summary + "\\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        } catch (IOException ignored) { }
+    }
+
     private void stopCapture() {
+        autoScanRequested = false;
         if (!running.get() && descriptor == null) return;
         running.set(false);
         generation++;
