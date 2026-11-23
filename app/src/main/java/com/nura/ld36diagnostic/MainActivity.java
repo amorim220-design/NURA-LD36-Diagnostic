@@ -111,7 +111,7 @@ public final class MainActivity extends Activity {
         } else {
             registerReceiver(usbEvents, filter);
         }
-        appendLog("NURA LD36 Diagnostic v0.1 pronto.");
+        appendLog("NURA LD36 Diagnostic v0.2.1: varredura automática disponível.");
         appendLog("Modo passivo: somente RX. Nenhum comando será enviado ao dongle.");
         appendLog("Feche o aplicativo Mirror original antes de conectar o LD36.");
         discoverAccessory();
@@ -151,7 +151,7 @@ public final class MainActivity extends Activity {
         TextView title = text("LD36 Diagnostic", 28, INK, Typeface.BOLD);
         title.setPadding(0, dp(7), 0, dp(5));
         root.addView(title);
-        TextView subtitle = text("USB AOA • captura de dados • sem root", 13, MUTED, Typeface.NORMAL);
+        TextView subtitle = text("VERSÃO 0.2.1 • VARREDURA AUTOMÁTICA • SEM ROOT", 13, ACCENT, Typeface.BOLD);
         root.addView(subtitle);
 
         LinearLayout statusCard = columnCard();
@@ -169,12 +169,12 @@ public final class MainActivity extends Activity {
         Button scanButton = button("Detectar", PANEL, INK);
         connectButton = button("Conectar RX", ACCENT, BG);
         stopButton = button("Parar", PANEL, INK);
-        Button autoButton = button("Varredura 60s", PANEL, INK);
+        Button autoButton = button("▶ INICIAR VARREDURA COMPLETA (60s)", ACCENT, BG);
         stopButton.setEnabled(false);
         addButton(commands, scanButton);
         addButton(commands, connectButton);
         addButton(commands, stopButton);
-        addToRoot(root, autoButton, 8);
+        addToRoot(root, autoButton, 14);
         scanButton.setOnClickListener(v -> discoverAccessory());
         connectButton.setOnClickListener(v -> connectWithPermission());
         stopButton.setOnClickListener(v -> stopCapture());
@@ -271,7 +271,7 @@ public final class MainActivity extends Activity {
         if (running.get()) return;
         if (accessory == null) {
             discoverAccessory();
-            if (accessory == null) return;
+            if (accessory == null) { autoScanRequested = false; return; }
         }
         if (usbManager.hasPermission(accessory)) {
             openAccessory();
