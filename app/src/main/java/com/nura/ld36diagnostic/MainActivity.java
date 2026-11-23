@@ -183,9 +183,9 @@ public final class MainActivity extends Activity {
                 appendLog("Já existe uma captura ativa. Pare-a antes da varredura automática.");
                 return;
             }
-            connectWithPermission();
-            // Start countdown only after openAccessory() has succeeded.
+            // Set before requesting permission: openAccessory can be synchronous.
             autoScanRequested = true;
+            connectWithPermission();
         });
 
         LinearLayout metricsCard = columnCard();
