@@ -67,7 +67,7 @@ public final class MainActivity extends Activity {
     private FileOutputStream usbOutput;
     private final Object sendLock = new Object();
     private volatile boolean videoModeRequested;
-    private boolean fillTvSelected;
+    private int screenMode = 1; // Auto by default; safe Original remains available.
     private volatile boolean videoStarted;
     private volatile int videoMagic;
     private Intent projectionConsent;
@@ -130,7 +130,7 @@ public final class MainActivity extends Activity {
         } else {
             registerReceiver(usbEvents, filter);
         }
-        appendLog("NURA LD36 Diagnostic v0.5.0: ajuste de tela cheia opcional, video H264.");
+        appendLog("NURA LD36 Diagnostic v0.6.0: modo AUTO acompanha giro da tela.");
         appendLog("Modo passivo: somente RX. Nenhum comando será enviado ao dongle.");
         appendLog("Feche o aplicativo Mirror original antes de conectar o LD36.");
         discoverAccessory();
@@ -170,7 +170,7 @@ public final class MainActivity extends Activity {
         TextView title = text("LD36 Diagnostic", 28, INK, Typeface.BOLD);
         title.setPadding(0, dp(7), 0, dp(5));
         root.addView(title);
-        TextView subtitle = text("VERSÃO 0.5.0 • AJUSTE DE TELA HDMI", 13, ACCENT, Typeface.BOLD);
+        TextView subtitle = text("VERSÃO 0.6.0 • ROTAÇÃO AUTOMÁTICA", 13, ACCENT, Typeface.BOLD);
         root.addView(subtitle);
 
         LinearLayout statusCard = columnCard();
@@ -201,24 +201,25 @@ public final class MainActivity extends Activity {
         addToRoot(root, fitLabel, 16);
         Spinner fitPicker = new Spinner(this);
         String[] fitting = {
-            "Original (sem cortes) — modo que ja funciona",
-            "Preencher TV (sem distorcer) — recorta bordas"
+            "Original (v0.4) — reinicie após girar",
+            "AUTO — acompanha rotação, sem cortes",
+            "Preencher TV — recorte experimental"
         };
         ArrayAdapter<String> fitAdapter = new ArrayAdapter<>(this,
             android.R.layout.simple_spinner_item, fitting);
         fitAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         fitPicker.setAdapter(fitAdapter);
         fitPicker.setBackgroundColor(PANEL);
-        fillTvSelected = getPreferences(MODE_PRIVATE).getBoolean("fill_tv", false);
-        fitPicker.setSelection(fillTvSelected ? 1 : 0);
+        screenMode = getPreferences(MODE_PRIVATE).getInt("screen_mode", 1);
+        if (screenMode < 0 || screenMode > 2) screenMode = 1;
+        fitPicker.setSelection(screenMode);
         fitPicker.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                boolean changed = fillTvSelected != (position == 1);
-                fillTvSelected = (position == 1);
-                getPreferences(MODE_PRIVATE).edit().putBoolean("fill_tv", fillTvSelected).apply();
-                if (changed) appendLog("Modo selecionado: " +
-                    (fillTvSelected ? "PREENCHE TV sem esticar (recorte central)." : "ORIGINAL sem cortes.") +
-                    " A mudanca vale para o proximo teste.");
+                boolean changed = screenMode != position;
+                screenMode = position;
+                getPreferences(MODE_PRIVATE).edit().putInt("screen_mode", screenMode).apply();
+                if (changed) appendLog("Modo: " + fitting[position]
+                    + " | aplicado no proximo espelhamento.");
             }
             @Override public void onNothingSelected(AdapterView<?> parent) { }
         });
@@ -280,7 +281,7 @@ public final class MainActivity extends Activity {
         exportText.setOnClickListener(v -> requestExport(false));
         exportBin.setOnClickListener(v -> requestExport(true));
 
-        TextView note = text("Original preserva o resultado da v0.4. Preencher TV usa recorte central na GPU, sem esticar, e pode cortar parte das laterais. O Android pede permissao de captura e mostra notificacao. Sem audio. Para mudar a orientacao, pare e inicie um novo teste.", 12, MUTED, Typeface.NORMAL);
+        TextView note = text("AUTO acompanha a rotação do celular durante jogos e aplicativos, mantendo a imagem inteira. Original conserva o método da v0.4 (reinicie após girar). Preencher TV pode cortar laterais. Modo experimental, sem áudio.", 12, MUTED, Typeface.NORMAL);
         note.setPadding(0, dp(17), 0, 0);
         root.addView(note);
     }
@@ -369,8 +370,10 @@ public final class MainActivity extends Activity {
                 int actualW = displaySize.x > 0 ? displaySize.x : metrics.widthPixels;
                 int actualH = displaySize.y > 0 ? displaySize.y : metrics.heightPixels;
                 boolean portrait = actualH >= actualW;
-                int encoderW = portrait ? 720 : 1280;
-                int encoderH = portrait ? 1280 : 720;
+                // Auto/Crop uses fixed landscape output and resizes the SOURCE on rotation.
+                // Original keeps the exact v0.4 behavior.
+                int encoderW = screenMode == 0 && portrait ? 720 : 1280;
+                int encoderH = screenMode == 0 && portrait ? 1280 : 720;
                 Intent intent = new Intent(this, MirrorProjectionService.class);
                 intent.setAction(MirrorProjectionService.ACTION_START);
                 intent.putExtra(MirrorProjectionService.EXTRA_RESULT, projectionResult);
@@ -380,10 +383,11 @@ public final class MainActivity extends Activity {
                 intent.putExtra(MirrorProjectionService.EXTRA_DPI, metrics.densityDpi);
                 intent.putExtra(MirrorProjectionService.EXTRA_SOURCE_WIDTH, actualW);
                 intent.putExtra(MirrorProjectionService.EXTRA_SOURCE_HEIGHT, actualH);
-                intent.putExtra(MirrorProjectionService.EXTRA_CROP, fillTvSelected);
+                intent.putExtra(MirrorProjectionService.EXTRA_CROP, screenMode == 2);
+                intent.putExtra(MirrorProjectionService.EXTRA_AUTO_ORIENTATION, screenMode == 1);
                 appendLog("Tela real: " + actualW + "x" + actualH + " -> encoder "
-                    + encoderW + "x" + encoderH
-                    + (fillTvSelected ? " | RECORTE CENTRAL" : " | ORIGINAL"));
+                    + encoderW + "x" + encoderH + " | modo="
+                    + (screenMode == 0 ? "ORIGINAL" : screenMode == 1 ? "AUTO" : "PREENCHER"));
                 projectionConsent = null; // MediaProjection consent token must be used once.
                 if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent);
                 else startService(intent);
@@ -513,7 +517,8 @@ public final class MainActivity extends Activity {
         if (activeSession != null && videoModeRequested) {
             android.util.DisplayMetrics metrics = getResources().getDisplayMetrics();
             boolean portrait = metrics.heightPixels >= metrics.widthPixels;
-            activeSession.setVideoOutput(portrait ? 720 : 1280, portrait ? 1280 : 720);
+            activeSession.setVideoOutput(screenMode == 0 && portrait ? 720 : 1280,
+                screenMode == 0 && portrait ? 1280 : 720);
         }
         long bytes = 0;
         long reads = 0;
