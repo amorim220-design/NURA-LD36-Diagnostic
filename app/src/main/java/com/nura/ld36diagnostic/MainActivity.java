@@ -320,7 +320,10 @@ public final class MainActivity extends Activity {
 
     private void startVideoAfterStar(int session, int magic, int width, int height) {
         runOnUiThread(() -> {
-            if (generation != session || !running.get() || !videoModeRequested || videoStarted) return;
+            if (generation != session || !running.get() || !videoModeRequested) return;
+            // A physical dongle may renegotiate SYNC/STAR; update the session magic.
+            videoMagic = magic;
+            if (videoStarted) return;
             if (projectionConsent == null) {
                 appendLog("Sem permissao de captura: video nao iniciado.");
                 return;
