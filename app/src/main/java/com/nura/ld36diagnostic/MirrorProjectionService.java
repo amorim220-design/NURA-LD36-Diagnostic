@@ -36,6 +36,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class MirrorProjectionService extends Service {
     public static final String ACTION_START = "com.nura.ld36diagnostic.START_VIDEO";
     public static final String ACTION_STOP = "com.nura.ld36diagnostic.STOP_VIDEO";
+    public static final String ACTION_REFRESH = "com.nura.ld36diagnostic.REFRESH_DISPLAY";
     public static final String EXTRA_RESULT = "result";
     public static final String EXTRA_DATA = "data";
     public static final String EXTRA_WIDTH = "width";
@@ -57,6 +58,8 @@ public final class MirrorProjectionService extends Service {
     private int dpiValue;
     private volatile int lastCaptureWidth;
     private volatile int lastCaptureHeight;
+    private volatile int successfulRebinds;
+    private volatile int failedRebinds;
     private Thread worker;
     private final Handler handler = new Handler(Looper.getMainLooper());
 
@@ -77,6 +80,13 @@ public final class MirrorProjectionService extends Service {
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent == null) { stopSelf(); return START_NOT_STICKY; }
+        if (ACTION_REFRESH.equals(intent.getAction())) {
+            if (capturing.get()) {
+                handler.postDelayed(() -> refreshScreenDimensions("atividade Android"), 350);
+                handler.postDelayed(() -> refreshScreenDimensions("atividade Android retry"), 1100);
+            }
+            return START_NOT_STICKY;
+        }
         if (ACTION_STOP.equals(intent.getAction())) {
             stopAll();
             stopSelf();
@@ -138,11 +148,7 @@ public final class MirrorProjectionService extends Service {
                     @Override public void onDisplayRemoved(int id) { }
                     @Override public void onDisplayChanged(int id) {
                         if (id != Display.DEFAULT_DISPLAY) return;
-                        Display current = displayManager.getDisplay(Display.DEFAULT_DISPLAY);
-                        if(current==null)return;
-                        Point p=new Point();
-                        current.getRealSize(p);
-                        updateCaptureDimensions(p.x,p.y,"rotacao Android");
+                        refreshScreenDimensions("rotacao Android");
                     }
                 };
                 if(displayManager!=null)displayManager.registerDisplayListener(orientationListener,handler);
@@ -153,6 +159,9 @@ public final class MirrorProjectionService extends Service {
             }
             capturing.set(true);
             note("Captura H264 iniciada " + width + "x" + height + " 30fps; enviando VDAT.");
+            if (cropRenderer != null) {
+                handler.postDelayed(() -> refreshScreenDimensions("verificacao inicial"), 1200);
+            }
             worker = new Thread(this::encodeLoop, "nura-h264");
             worker.start();
         } catch (Exception ex) {
@@ -163,20 +172,59 @@ public final class MirrorProjectionService extends Service {
         return START_NOT_STICKY;
     }
 
+    private void refreshScreenDimensions(String reason) {
+        DisplayManager manager = (DisplayManager) getSystemService(DISPLAY_SERVICE);
+        if (manager == null) return;
+        Display current = manager.getDisplay(Display.DEFAULT_DISPLAY);
+        if (current == null) return;
+        Point p = new Point();
+        current.getRealSize(p);
+        updateCaptureDimensions(p.x, p.y, reason);
+    }
+
     private void updateCaptureDimensions(int width,int height,String reason) {
         handler.post(() -> {
-            if (!capturing.get() || cropRenderer==null || display==null) return;
-            if(width<240||height<240||width>4096||height>4096)return;
-            if(width==lastCaptureWidth&&height==lastCaptureHeight)return;
+            if (!capturing.get() || cropRenderer == null || display == null) return;
+            if(width < 240 || height < 240 || width > 4096 || height > 4096)return;
+            if(width == lastCaptureWidth && height == lastCaptureHeight)return;
+            int oldW = lastCaptureWidth, oldH = lastCaptureHeight;
+            Surface captureSurface = cropRenderer.getCaptureSurface();
             try {
-                lastCaptureWidth=width;
-                lastCaptureHeight=height;
-                cropRenderer.updateCapturedSize(width,height);
-                display.resize(width,height,dpiValue);
-                note("Orientacao alterada (" + reason + "): " + width + "x" + height
-                    + " -> TV 1280x720, proporcao preservada sem cortes.");
-            } catch(Exception ex) {
-                note("Erro ao redimensionar captura: " + ex.getMessage());
+                // Detach the old buffer before updating its size. Android's
+                // recommended resize flow is resize + setSurface, not resize alone.
+                display.setSurface(null);
+                if (!cropRenderer.updateCapturedSize(width, height)) {
+                    throw new IllegalStateException("EGL resize timed out");
+                }
+                display.resize(width, height, dpiValue);
+                display.setSurface(captureSurface);
+                lastCaptureWidth = width;
+                lastCaptureHeight = height;
+                successfulRebinds++;
+                note("REBOUND #" + successfulRebinds + " " + reason + ": "
+                    + oldW + "x" + oldH + " -> " + width + "x" + height
+                    + " surface=reattach ok; encoder=1280x720.");
+                // Ask encoder for an IDR after a potentially changed source layout.
+                handler.postDelayed(() -> {
+                    MediaCodec active = codec;
+                    if (!capturing.get() || active == null) return;
+                    try {
+                        Bundle params = new Bundle();
+                        params.putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0);
+                        active.setParameters(params);
+                    } catch (Exception e) {
+                        note("IDR request unsupported: " + e.getMessage());
+                    }
+                }, 250);
+            } catch (Exception ex) {
+                failedRebinds++;
+                note("REBOUND FALHOU #" + failedRebinds + ": " + ex.getMessage());
+                try {
+                    display.setSurface(captureSurface);
+                    note("Superficie original reativada apos falha.");
+                } catch (Exception recovery) {
+                    note("Superficie nao recuperada: " + recovery.getMessage());
+                }
             }
         });
     }
@@ -278,6 +326,7 @@ public final class MirrorProjectionService extends Service {
 
     private synchronized void stopAll() {
         capturing.set(false);
+        note("Rebinds: sucesso=" + successfulRebinds + ", falhas=" + failedRebinds);
         if(displayManager!=null && orientationListener!=null) {
             try {displayManager.unregisterDisplayListener(orientationListener);}
             catch(Exception ignored) { }
