@@ -43,6 +43,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class MainActivity extends Activity {
     private static final String ACTION_USB_PERMISSION = "com.nura.ld36diagnostic.USB_PERMISSION";
     private static final int REQ_EXPORT_TEXT = 4001;
+    private static final int REQ_PROJECTION = 4004;
+    private static final long TX_BIN_LIMIT = 32L * 1024 * 1024;
     private static final int REQ_EXPORT_RAW = 4002;
     private static final int RAW_CAPTURE_LIMIT = 8 * 1024 * 1024;
     private static final int TEXT_CAPTURE_LIMIT = 3 * 1024 * 1024;
@@ -60,6 +62,15 @@ public final class MainActivity extends Activity {
     private ParcelFileDescriptor descriptor;
     private InputStream input;
     private FileOutputStream usbOutput;
+    private final Object sendLock = new Object();
+    private volatile boolean videoModeRequested;
+    private volatile boolean videoStarted;
+    private volatile int videoMagic;
+    private Intent projectionConsent;
+    private int projectionResult;
+    private long videoFrames;
+    private long videoBytes;
+    private boolean txLimitWarned;
     private File txFile;
     private boolean activeScanRequested = false;
     private boolean activeScan = false;
@@ -115,7 +126,7 @@ public final class MainActivity extends Activity {
         } else {
             registerReceiver(usbEvents, filter);
         }
-        appendLog("NURA LD36 Diagnostic v0.3.0: modo passivo e negociacao ativa controlada.");
+        appendLog("NURA LD36 Diagnostic v0.4.0: teste de video H264 por MediaProjection.");
         appendLog("Modo passivo: somente RX. Nenhum comando será enviado ao dongle.");
         appendLog("Feche o aplicativo Mirror original antes de conectar o LD36.");
         discoverAccessory();
@@ -155,7 +166,7 @@ public final class MainActivity extends Activity {
         TextView title = text("LD36 Diagnostic", 28, INK, Typeface.BOLD);
         title.setPadding(0, dp(7), 0, dp(5));
         root.addView(title);
-        TextView subtitle = text("VERSÃO 0.3.0 • DIAGNÓSTICO USB AOA", 13, ACCENT, Typeface.BOLD);
+        TextView subtitle = text("VERSÃO 0.4.0 • VÍDEO USB EXPERIMENTAL", 13, ACCENT, Typeface.BOLD);
         root.addView(subtitle);
 
         LinearLayout statusCard = columnCard();
@@ -175,16 +186,20 @@ public final class MainActivity extends Activity {
         stopButton = button("Parar", PANEL, INK);
         Button autoButton = button("▶ VARREDURA PASSIVA (60s)", ACCENT, BG);
         Button activeButton = button("▶ NEGOCIAR PROTOCOLO (60s)", PANEL, INK);
+        Button videoButton = button("▶ ESPELHAR VÍDEO (TESTE 90s)", ACCENT, BG);
         stopButton.setEnabled(false);
         addButton(commands, scanButton);
         addButton(commands, connectButton);
         addButton(commands, stopButton);
         addToRoot(root, autoButton, 14);
         addToRoot(root, activeButton, 8);
+        addToRoot(root, videoButton, 8);
+        videoButton.setOnClickListener(v -> requestVideoConsent());
         scanButton.setOnClickListener(v -> discoverAccessory());
         connectButton.setOnClickListener(v -> connectWithPermission());
         stopButton.setOnClickListener(v -> stopCapture());
         activeButton.setOnClickListener(v -> {
+            videoModeRequested = false;
             if (running.get()) {
                 appendLog("Encerre a captura anterior antes de iniciar a negociação.");
                 return;
@@ -194,6 +209,7 @@ public final class MainActivity extends Activity {
             connectWithPermission();
         });
         autoButton.setOnClickListener(v -> {
+            videoModeRequested = false;
             activeScanRequested = false;
             if (running.get()) {
                 appendLog("Já existe uma captura ativa. Pare-a antes da varredura automática.");
@@ -234,7 +250,7 @@ public final class MainActivity extends Activity {
         exportText.setOnClickListener(v -> requestExport(false));
         exportBin.setOnClickListener(v -> requestExport(true));
 
-        TextView note = text("O modo ativo ecoa heartbeats e responde somente a SYNC/STAR recebidos. Não grava tela, não transmite vídeo/áudio e não intercepta o Mirror. Use com o Mirror fechado.", 12, MUTED, Typeface.NORMAL);
+        TextView note = text("VÍDEO EXPERIMENTAL: o Android pedirá autorização para capturar sua tela e mostrará notificação durante o teste. Não captura áudio e não intercepta o Mirror original. Feche o Mirror antes de começar; toque em Parar para encerrar.", 12, MUTED, Typeface.NORMAL);
         note.setPadding(0, dp(17), 0, 0);
         root.addView(note);
     }
@@ -286,6 +302,60 @@ public final class MainActivity extends Activity {
         stopButton.setEnabled(running.get());
     }
 
+    private void requestVideoConsent() {
+        if (running.get()) {
+            appendLog("Encerre primeiro a sessão atual.");
+            return;
+        }
+        try {
+            android.media.projection.MediaProjectionManager manager =
+                (android.media.projection.MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
+            if (manager == null) throw new IllegalStateException("MediaProjection indisponivel");
+            startActivityForResult(manager.createScreenCaptureIntent(), REQ_PROJECTION);
+            appendLog("Solicitada autorizacao de captura de tela do Android.");
+        } catch (Exception e) {
+            appendLog("Falha solicitando captura: " + e.getMessage());
+        }
+    }
+
+    private void startVideoAfterStar(int session, int magic, int width, int height) {
+        runOnUiThread(() -> {
+            if (generation != session || !running.get() || !videoModeRequested) return;
+            // A physical dongle may renegotiate SYNC/STAR; update the session magic.
+            videoMagic = magic;
+            if (videoStarted) return;
+            if (projectionConsent == null) {
+                appendLog("Sem permissao de captura: video nao iniciado.");
+                return;
+            }
+            videoStarted = true;
+            videoMagic = magic;
+            try {
+                android.util.DisplayMetrics metrics = getResources().getDisplayMetrics();
+                // Preserve screen aspect ratio; H.264 encoder dimensions aligned in service.
+                int actualW = metrics.widthPixels;
+                int actualH = metrics.heightPixels;
+                boolean portrait = actualH >= actualW;
+                int encoderW = portrait ? 720 : 1280;
+                int encoderH = portrait ? 1280 : 720;
+                Intent intent = new Intent(this, MirrorProjectionService.class);
+                intent.setAction(MirrorProjectionService.ACTION_START);
+                intent.putExtra(MirrorProjectionService.EXTRA_RESULT, projectionResult);
+                intent.putExtra(MirrorProjectionService.EXTRA_DATA, projectionConsent);
+                intent.putExtra(MirrorProjectionService.EXTRA_WIDTH, encoderW);
+                intent.putExtra(MirrorProjectionService.EXTRA_HEIGHT, encoderH);
+                intent.putExtra(MirrorProjectionService.EXTRA_DPI, metrics.densityDpi);
+                projectionConsent = null; // MediaProjection consent token must be used once.
+                if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent);
+                else startService(intent);
+                appendLog("STAR fisico recebido: iniciando captura de video com autorizacao.");
+            } catch (Exception e) {
+                videoStarted = false;
+                appendLog("Falha iniciando servico H264: " + e.getMessage());
+            }
+        });
+    }
+
     private void connectWithPermission() {
         if (running.get()) return;
         if (accessory == null) {
@@ -325,6 +395,10 @@ public final class MainActivity extends Activity {
             usbOutput = out;
             activeScan = activeScanRequested;
             activeScanRequested = false;
+            videoStarted = false;
+            videoFrames = 0;
+            videoBytes = 0;
+            txLimitWarned = false;
             String stamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
             File dir = getExternalFilesDir(null);
             if (dir == null) dir = getFilesDir();
@@ -357,33 +431,51 @@ public final class MainActivity extends Activity {
 
     private void scheduleAutoStop(int session) {
         autoScanRequested = false;
-        appendLog("Varredura automática: RX passivo durante 60 segundos.");
+        appendLog(videoModeRequested ? "Teste de video: janela maxima de 90 segundos." :
+                  "Varredura de protocolo durante 60 segundos.");
         mainHandler.postDelayed(() -> {
             if (generation == session && running.get()) {
                 appendLog("Varredura automática concluída após 60 segundos.");
                 stopCapture();
             }
-        }, AUTO_SCAN_MS);
+        }, videoModeRequested ? 90_000L : AUTO_SCAN_MS);
     }
 
     private void captureLoop(int session, FileInputStream in, File targetRaw,
                              FileOutputStream output, File targetTx, boolean active) {
         StreamProbe probe = new StreamProbe();
+        if (active && videoModeRequested) {
+            MirrorProjectionService.setReceiver(new MirrorProjectionService.VideoSink() {
+                @Override public void onVideo(byte[] avc, boolean config, boolean keyframe, long millis) throws IOException {
+                    if (session != generation || !running.get() || !videoStarted) throw new IOException("Sessao USB encerrada");
+                    if (!VideoPacket.isAnnexB(avc)) {
+                        logFromWorker(session, "H264: quadro sem cabecalho Annex-B, descartado.");
+                        return;
+                    }
+                    byte[] packet = VideoPacket.make(videoMagic, millis, 0, avc);
+                    transmitUsb(packet, config ? "VDAT_SPS_PPS" : keyframe ? "VDAT_IDR" : "VDAT_P", session, output, targetTx, true);
+                }
+                @Override public void onStatus(String message) {
+                    logFromWorker(session, message);
+                }
+            });
+        }
         ActiveProtocolSession activeSession = active ? new ActiveProtocolSession(new ActiveProtocolSession.Sink() {
             @Override public void send(byte[] data, String label) throws IOException {
-                // On the same capture thread: ordered with received frames, never simultaneous writes.
-                output.write(data);
-                output.flush();
-                try (FileOutputStream tx = new FileOutputStream(targetTx, true)) {
-                    tx.write(data);
-                }
-                logFromWorker(session, "TX " + label + " (" + data.length + " B) HEX="
-                    + ProtocolInspector.toHex(data, 0, Math.min(data.length, 48)));
+                transmitUsb(data, label, session, output, targetTx, false);
             }
             @Override public void note(String message) {
                 logFromWorker(session, message);
             }
+            @Override public void onStartMirror(int width, int height, int magic) {
+                if (videoModeRequested) startVideoAfterStar(session, magic, width, height);
+            }
         }) : null;
+        if (activeSession != null && videoModeRequested) {
+            android.util.DisplayMetrics metrics = getResources().getDisplayMetrics();
+            boolean portrait = metrics.heightPixels >= metrics.widthPixels;
+            activeSession.setVideoOutput(portrait ? 720 : 1280, portrait ? 1280 : 720);
+        }
         long bytes = 0;
         long reads = 0;
         boolean rawLimitLogged = false;
@@ -434,12 +526,14 @@ public final class MainActivity extends Activity {
             logFromWorker(session, "Falha de leitura: " + e.getClass().getSimpleName() + ": " + e.getMessage());
         } finally {
             String summary = probe.report()
-                + (activeSession == null ? " | Modo passivo." : " | " + activeSession.summary());
+                + (activeSession == null ? " | Modo passivo." : " | " + activeSession.summary())
+                + " | H264 frames=" + videoFrames + " videoBytesUSB=" + videoBytes;
             // Write summary directly to the session log even if generation changed on stop.
             appendSessionSummary(summary);
             runOnUiThread(() -> {
                 if (session != generation) return;
                 running.set(false);
+                stopVideoService();
                 closeResources();
                 setStatus("Captura encerrada", WARNING);
                 connectButton.setEnabled(accessory != null);
@@ -447,6 +541,48 @@ public final class MainActivity extends Activity {
                 appendLog("Captura finalizada; dados salvos no armazenamento do aplicativo.");
             });
         }
+    }
+
+    private void transmitUsb(byte[] data, String label, int session,
+                             FileOutputStream output, File targetTx, boolean video) throws IOException {
+        synchronized (sendLock) {
+            if (!running.get() || session != generation) throw new IOException("USB nao conectado");
+            output.write(data);
+            output.flush();
+            if (targetTx.length() + data.length <= TX_BIN_LIMIT) {
+                try (FileOutputStream tx = new FileOutputStream(targetTx, true)) {
+                    tx.write(data);
+                }
+            } else if (!txLimitWarned) {
+                txLimitWarned = true;
+                logFromWorker(session, "Limite 32MiB arquivo TX atingido; transmissao USB continua.");
+            }
+            if (video) {
+                videoFrames++;
+                videoBytes += data.length;
+                if (videoFrames <= 4 || videoFrames % 60 == 0 || label.equals("VDAT_IDR")) {
+                    logFromWorker(session, "TX " + label + " len=" + data.length
+                        + " totalH264=" + videoFrames + " bytesUSB=" + videoBytes);
+                }
+            } else {
+                logFromWorker(session, "TX " + label + " (" + data.length + " B) HEX="
+                    + ProtocolInspector.toHex(data, 0, Math.min(data.length, 48)));
+            }
+        }
+    }
+
+    private void stopVideoService() {
+        MirrorProjectionService.setReceiver(null);
+        if (videoStarted) {
+            try {
+                Intent stop = new Intent(this, MirrorProjectionService.class);
+                stop.setAction(MirrorProjectionService.ACTION_STOP);
+                startService(stop);
+            } catch (RuntimeException e) {
+                appendLog("Parada do serviço de vídeo: " + e.getMessage());
+            }
+        }
+        videoStarted = false;
     }
 
     private void appendSessionSummary(String summary) {
@@ -460,6 +596,9 @@ public final class MainActivity extends Activity {
     private void stopCapture() {
         autoScanRequested = false;
         activeScanRequested = false;
+        videoModeRequested = false;
+        projectionConsent = null;
+        stopVideoService();
         if (!running.get() && descriptor == null) return;
         running.set(false);
         generation++;
@@ -471,9 +610,11 @@ public final class MainActivity extends Activity {
     }
 
     private void closeResources() {
-        try { if (input != null) input.close(); } catch (IOException ignored) { }
-        try { if (usbOutput != null) usbOutput.close(); } catch (IOException ignored) { }
-        usbOutput = null;
+        synchronized (sendLock) {
+            try { if (input != null) input.close(); } catch (IOException ignored) { }
+            try { if (usbOutput != null) usbOutput.close(); } catch (IOException ignored) { }
+            usbOutput = null;
+        }
         try { if (descriptor != null) descriptor.close(); } catch (IOException ignored) { }
         input = null;
         descriptor = null;
@@ -506,6 +647,20 @@ public final class MainActivity extends Activity {
 
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQ_PROJECTION) {
+            if (resultCode != RESULT_OK || data == null) {
+                appendLog("Captura de tela nao autorizada.");
+                return;
+            }
+            projectionResult = resultCode;
+            projectionConsent = data;
+            videoModeRequested = true;
+            activeScanRequested = true;
+            autoScanRequested = true;
+            appendLog("MediaProjection autorizada; abrindo LD36 para iniciar negociacao.");
+            connectWithPermission();
+            return;
+        }
         if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
         boolean raw = requestCode == REQ_EXPORT_RAW;
         if (!raw && requestCode != REQ_EXPORT_TEXT && requestCode != 4003) return;

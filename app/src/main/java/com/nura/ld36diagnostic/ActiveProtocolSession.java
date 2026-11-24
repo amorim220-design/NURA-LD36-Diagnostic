@@ -14,6 +14,7 @@ public final class ActiveProtocolSession {
     public interface Sink {
         void send(byte[] data, String label) throws IOException;
         void note(String message);
+        default void onStartMirror(int videoWidth, int videoHeight, int magic) { }
     }
     private final Sink sink;
     private byte[] waiting = new byte[0];
@@ -25,9 +26,19 @@ public final class ActiveProtocolSession {
     private boolean syncAcknowledged;
     private int unknownBytes;
     private int replies;
+    private int requestedVideoWidth;
+    private int requestedVideoHeight;
     private static final int MAX_FRAME = 2 * 1024 * 1024;
 
     public ActiveProtocolSession(Sink sink) { this.sink = sink; }
+
+    public synchronized void setVideoOutput(int width, int height) {
+        if (width < 320 || height < 320 || width > 1920 || height > 1920) {
+            throw new IllegalArgumentException("Invalid video output dimensions");
+        }
+        requestedVideoWidth = width;
+        requestedVideoHeight = height;
+    }
 
     public synchronized void accept(byte[] incoming, int len) throws IOException {
         if (len <= 0) return;
@@ -110,8 +121,10 @@ public final class ActiveProtocolSession {
             byte[] rsp = frame(48, "RRIM");
             put32(rsp,8,magic);
             System.arraycopy(new byte[]{'R','A','T','S'},0,rsp,16,4);
-            int vw = width == 0 || width == 0xffff ? 1280 : Math.min(width,1920);
-            int vh = height == 0 || height == 0xffff ? 720 : Math.min(height,1080);
+            int vw = requestedVideoWidth > 0 ? requestedVideoWidth :
+                (width == 0 || width == 0xffff ? 1280 : Math.min(width,1920));
+            int vh = requestedVideoHeight > 0 ? requestedVideoHeight :
+                (height == 0 || height == 0xffff ? 720 : Math.min(height,1080));
             put16(rsp,20,vw);
             put16(rsp,22,vh);
             put32(rsp,24,bitRate <= 0 ? 8000000 : Math.min(bitRate,30000000));
@@ -124,7 +137,8 @@ public final class ActiveProtocolSession {
             put16(rsp,42,16);
             put32(rsp,44,48000);
             transmit(rsp,"STAR_REPLY_48_DIAGNOSTIC");
-            sink.note("STAR confirmado; ainda sem captura de tela, video ou audio.");
+            sink.note("STAR respondido; aguardando permissao Android para envio opcional de VDAT.");
+            sink.onStartMirror(vw, vh, magic);
         } else {
             sink.note("RX frame tag=" + tag + " len=" + pkt.length);
         }
