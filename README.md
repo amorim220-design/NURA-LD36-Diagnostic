@@ -1,3 +1,24 @@
+# NURA LD36 v1.0.0 — teste isolado do compositor nativo Android
+
+Contexto: na TV real o protocolo AOA e H.264 funcionam. A v0.9 continua visualmente distorcida em todos os ângulos. O processamento da v0.5–v0.9 tem uma potencial **dupla transformação**: Android já ajusta a tela ao VirtualDisplay e a GPU ajusta novamente a textura com AspectFit/UV.
+
+## Novo terceiro modo: TV DIRETO v1.0
+
+- MediaProjection cria um VirtualDisplay fixo de 1280x720 **diretamente na Surface de entrada do MediaCodec**, exatamente como o caminho testado da v0.4, mas com saída horizontal constante.
+- **Zero ScreenCropRenderer / EGL / escala extra.** O Android fica responsável por centralização e proporção. Não remapear eixos por conta própria.
+- Ao girar o telefone, registrar dimensões do display/conteúdo, solicitar IDR, **não redimensionar nem reconectar a Surface do codec**. Manter o sinal do LD36 em 1280x720.
+- Preservar modo Original v0.4 como opção inicial (segura) e modo GPU v0.9 para comparação. Não foram feitas alterações nos pacotes AOA/VDAT nem implementado áudio.
+
+## Testes no aparelho/TV (pendentes)
+
+1. Escolher TV DIRETO v1.0 e espelhar; o vídeo inicia em 1280x720, sem GPU própria.
+2. Em vertical: verificar imagem inteira, proporções naturais e bordas aceitas.
+3. Girar o aparelho, abrir app/jogo horizontal: verificar se a TV se atualiza, sem cortes, alongamento nem ficar de lado.
+4. Exportar TXT e comparar com fotos da TV. Eventos TV DIRETO ROTACAO, TV DIRETO CONTEUDO e fluxo VDAT são diagnósticos de sessão.
+5. Se falhar, interromper e comparar com Original v0.4; não afirmar correção visual sem a evidência do teste físico.
+
+---
+
 # NURA LD36 v0.9 — correção experimental do aspecto / rotação
 
 Fotos do teste v0.8 mostraram dois casos: conteúdo achatado em uma faixa horizontal, e conteúdo maior porém deformado. A v0.8 também acumulava correções UV de 90/180/270 graus ao receber uma nova orientação física do Android.

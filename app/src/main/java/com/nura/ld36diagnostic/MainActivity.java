@@ -69,6 +69,7 @@ public final class MainActivity extends Activity {
     private final Object sendLock = new Object();
     private volatile boolean videoModeRequested;
     private boolean fillTvSelected;
+    private boolean directTvSelected;
     private volatile boolean videoStarted;
     private volatile int videoMagic;
     private Intent projectionConsent;
@@ -131,7 +132,7 @@ public final class MainActivity extends Activity {
         } else {
             registerReceiver(usbEvents, filter);
         }
-        appendLog("NURA LD36 Diagnostic v0.9.0: proporcao preservada e giro anterior zerado na rotacao.");
+        appendLog("NURA LD36 Diagnostic v1.0.0: capturador TV direto, sem GPU secundaria.");
         appendLog("Modo passivo: somente RX. Nenhum comando será enviado ao dongle.");
         appendLog("Feche o aplicativo Mirror original antes de conectar o LD36.");
         discoverAccessory();
@@ -152,7 +153,9 @@ public final class MainActivity extends Activity {
     @Override public void onConfigurationChanged(Configuration config) {
         super.onConfigurationChanged(config);
         appendLog("Android rotacionou: " + (config.orientation == Configuration.ORIENTATION_LANDSCAPE
-            ? "HORIZONTAL" : "VERTICAL") + ". Solicitando atualizacao da superficie.");
+            ? "HORIZONTAL" : "VERTICAL") +
+            (directTvSelected ? ". TV DIRETO: compositor do Android mantém surface fixa." :
+                ". Solicitando atualizacao da superficie."));
         if (videoStarted) {
             Intent refresh = new Intent(this, MirrorProjectionService.class);
             refresh.setAction(MirrorProjectionService.ACTION_REFRESH);
@@ -183,7 +186,7 @@ public final class MainActivity extends Activity {
         TextView title = text("LD36 Diagnostic", 28, INK, Typeface.BOLD);
         title.setPadding(0, dp(7), 0, dp(5));
         root.addView(title);
-        TextView subtitle = text("VERSÃO 0.9.0 • PROPORÇÃO / ORIENTAÇÃO", 13, ACCENT, Typeface.BOLD);
+        TextView subtitle = text("VERSÃO 1.0.0 • CAPTURA TV DIRETA", 13, ACCENT, Typeface.BOLD);
         root.addView(subtitle);
 
         LinearLayout statusCard = columnCard();
@@ -214,25 +217,33 @@ public final class MainActivity extends Activity {
         addToRoot(root, fitLabel, 16);
         Spinner fitPicker = new Spinner(this);
         String[] fitting = {
-            "Original (v0.4) — imagem que funcionou",
-            "Rotação experimental — superfície atualizada"
+            "Original v0.4 — captura direta antiga",
+            "GPU v0.9 — diagnóstico manual (distorção conhecida)",
+            "TV DIRETO v1.0 — Android compõe imagem (teste)"
         };
         ArrayAdapter<String> fitAdapter = new ArrayAdapter<>(this,
             android.R.layout.simple_spinner_item, fitting);
         fitAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         fitPicker.setAdapter(fitAdapter);
         fitPicker.setBackgroundColor(PANEL);
-        // Safety first: users saw broken images in 0.5/0.6; default to working 0.4 path.
-        fillTvSelected = getPreferences(MODE_PRIVATE).getBoolean("dynamic_rotation_v07", false);
-        fitPicker.setSelection(fillTvSelected ? 1 : 0);
+        // New mode is opt-in: known-working Original remains safe initial selection.
+        int mode = getPreferences(MODE_PRIVATE).getInt("capture_mode_v10", 0);
+        if (mode < 0 || mode > 2) mode = 0;
+        fillTvSelected = mode == 1;
+        directTvSelected = mode == 2;
+        fitPicker.setSelection(mode);
         fitPicker.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                boolean changed = fillTvSelected != (position == 1);
-                fillTvSelected = (position == 1);
-                getPreferences(MODE_PRIVATE).edit().putBoolean("dynamic_rotation_v07", fillTvSelected).apply();
-                if (changed) appendLog("Modo selecionado: " +
-                    (fillTvSelected ? "EXPERIMENTAL: reanexacao de superficie e ajuste de rotacao." : "ORIGINAL v0.4, sem adaptacao.") +
-                    " A mudanca vale para o proximo teste.");
+                boolean gpu = position == 1;
+                boolean direct = position == 2;
+                boolean changed = fillTvSelected != gpu || directTvSelected != direct;
+                fillTvSelected = gpu;
+                directTvSelected = direct;
+                getPreferences(MODE_PRIVATE).edit().putInt("capture_mode_v10", position).apply();
+                if (changed) appendLog("Captura selecionada: " +
+                    (direct ? "TV DIRETO sem OpenGL" :
+                        (gpu ? "GPU experimental anterior" : "Original v0.4")) +
+                    ". Valido apenas na proxima sessao.");
             }
             @Override public void onNothingSelected(AdapterView<?> parent) { }
         });
@@ -326,7 +337,7 @@ public final class MainActivity extends Activity {
         exportText.setOnClickListener(v -> requestExport(false));
         exportBin.setOnClickListener(v -> requestExport(true));
 
-        TextView note = text("v0.9: a proporção é recalculada para a orientação real da captura. Ao girar fisicamente o celular, o giro manual antigo volta a 0° para evitar dupla rotação. Use GIRAR 90° apenas se ficar de lado. O botão REDEFINIR restaura 0°. Exporte TXT. Original da v0.4 continua disponível.", 12, MUTED, Typeface.NORMAL);
+        TextView note = text("v1.0: NOVO TV DIRETO usa o compositor nativo do Android, sem a segunda transformação OpenGL que deformava a imagem. Inicie este modo, observe proporção no vertical e horizontal, exporte TXT. Original v0.4 preservado. Botões de giro só são válidos no modo GPU anterior. Áudio indisponível.", 12, MUTED, Typeface.NORMAL);
         note.setPadding(0, dp(17), 0, 0);
         root.addView(note);
     }
@@ -415,8 +426,8 @@ public final class MainActivity extends Activity {
                 int actualW = displaySize.x > 0 ? displaySize.x : metrics.widthPixels;
                 int actualH = displaySize.y > 0 ? displaySize.y : metrics.heightPixels;
                 boolean portrait = actualH >= actualW;
-                int encoderW = fillTvSelected ? 1280 : (portrait ? 720 : 1280);
-                int encoderH = fillTvSelected ? 720 : (portrait ? 1280 : 720);
+                int encoderW = (fillTvSelected || directTvSelected) ? 1280 : (portrait ? 720 : 1280);
+                int encoderH = (fillTvSelected || directTvSelected) ? 720 : (portrait ? 1280 : 720);
                 Intent intent = new Intent(this, MirrorProjectionService.class);
                 intent.setAction(MirrorProjectionService.ACTION_START);
                 intent.putExtra(MirrorProjectionService.EXTRA_RESULT, projectionResult);
@@ -427,9 +438,11 @@ public final class MainActivity extends Activity {
                 intent.putExtra(MirrorProjectionService.EXTRA_SOURCE_WIDTH, actualW);
                 intent.putExtra(MirrorProjectionService.EXTRA_SOURCE_HEIGHT, actualH);
                 intent.putExtra(MirrorProjectionService.EXTRA_CROP, fillTvSelected);
+                intent.putExtra(MirrorProjectionService.EXTRA_DIRECT_TV, directTvSelected);
                 appendLog("Tela real: " + actualW + "x" + actualH + " -> encoder "
                     + encoderW + "x" + encoderH
-                    + (fillTvSelected ? " | AUTO FIT E ROTACAO" : " | ORIGINAL"));
+                    + (directTvSelected ? " | TV DIRETO ANDROID SEM OPENGL" :
+                        (fillTvSelected ? " | GPU ANTIGA" : " | ORIGINAL v0.4")));
                 projectionConsent = null; // MediaProjection consent token must be used once.
                 if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent);
                 else startService(intent);
