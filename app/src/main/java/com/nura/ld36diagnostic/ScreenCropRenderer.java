@@ -37,7 +37,11 @@ public final class ScreenCropRenderer implements AutoCloseable {
     private final java.nio.FloatBuffer pos = asBuffer(quad);
     private java.nio.FloatBuffer uv;
     private final Surface encoderSurface;
-    private final int sourceWidth, sourceHeight, encodedWidth, encodedHeight;
+    private volatile int sourceWidth, sourceHeight;
+    private final int encodedWidth, encodedHeight;
+    private final boolean cropLandscape;
+    private java.nio.FloatBuffer drawVertices;
+    private volatile boolean needsReconfigure;
     private volatile boolean closed;
     private volatile int rendered;
 
@@ -51,9 +55,15 @@ public final class ScreenCropRenderer implements AutoCloseable {
 
     public ScreenCropRenderer(Surface destination, int sourceW, int sourceH,
                               int outputW, int outputH) throws Exception {
+        this(destination,sourceW,sourceH,outputW,outputH,true);
+    }
+
+    public ScreenCropRenderer(Surface destination, int sourceW, int sourceH,
+                              int outputW, int outputH, boolean cropLandscape) throws Exception {
         encoderSurface=destination;
         sourceWidth=sourceW;sourceHeight=sourceH;
         encodedWidth=outputW;encodedHeight=outputH;
+        this.cropLandscape=cropLandscape;
         thread.start();
         handler=new Handler(thread.getLooper());
         CountDownLatch latch=new CountDownLatch(1);
@@ -74,6 +84,17 @@ public final class ScreenCropRenderer implements AutoCloseable {
     }
 
     public Surface getCaptureSurface() { return sourceSurface; }
+
+    /** Called from MediaProjection resize callback; all GL state changes run on GPU thread. */
+    public void updateSourceSize(int width,int height) {
+        if(width < 240 || height < 240 || width > 4096 || height > 4096 || closed) return;
+        handler.post(() -> {
+            if(closed || sourceTexture == null) return;
+            sourceWidth=width;sourceHeight=height;
+            sourceTexture.setDefaultBufferSize(width,height);
+            recomputeLayout();
+        });
+    }
     public int getRenderedFrames() { return rendered; }
 
     private void init() {
@@ -123,13 +144,34 @@ public final class ScreenCropRenderer implements AutoCloseable {
         uniformTexture=GLES20.glGetUniformLocation(program,"uImage");
         // Screen source is captured at real native dimensions. Center crop
         // the excess only, never stretch.
-        float[] rect=AspectCrop.centerCrop(sourceWidth,sourceHeight,encodedWidth,encodedHeight);
-        uv=asBuffer(new float[]{rect[0],rect[1],rect[2],rect[1],
-                                rect[0],rect[3],rect[2],rect[3]});
+        recomputeLayout();
         GLES20.glViewport(0,0,encodedWidth,encodedHeight);
         sourceTexture.setOnFrameAvailableListener(st -> {
             if(!closed && handler!=null)handler.post(this::render);
         },handler);
+    }
+
+    /** The projection is portrait or landscape; preserve its aspect ratio.
+     * Crop only extra landscape width if user selected fill mode. Portrait content
+     * uses pillarboxes so game menus and UI are not cut off.
+     */
+    private void recomputeLayout() {
+        float inputRatio=(float)sourceWidth/sourceHeight;
+        float outputRatio=(float)encodedWidth/encodedHeight;
+        float[] uvRect={0f,0f,1f,1f};
+        float vertexX=1f,vertexY=1f;
+        if(cropLandscape && sourceWidth>=sourceHeight) {
+            uvRect=AspectCrop.centerCrop(sourceWidth,sourceHeight,encodedWidth,encodedHeight);
+        } else {
+            if(inputRatio>outputRatio) vertexY=outputRatio/inputRatio;
+            else vertexX=inputRatio/outputRatio;
+        }
+        uv=asBuffer(new float[]{uvRect[0],uvRect[1],uvRect[2],uvRect[1],
+                                uvRect[0],uvRect[3],uvRect[2],uvRect[3]});
+        drawVertices=asBuffer(new float[]{
+            -vertexX,-vertexY,vertexX,-vertexY,
+            -vertexX,vertexY,vertexX,vertexY
+        });
     }
 
     private static int shader(int type,String src) {
@@ -157,9 +199,9 @@ public final class ScreenCropRenderer implements AutoCloseable {
             GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES,textureId);
             GLES20.glUniform1i(uniformTexture,0);
             GLES20.glUniformMatrix4fv(uniformMatrix,1,false,textureMatrix,0);
-            pos.position(0);uv.position(0);
+            drawVertices.position(0);uv.position(0);
             GLES20.glEnableVertexAttribArray(attributePosition);
-            GLES20.glVertexAttribPointer(attributePosition,2,GLES20.GL_FLOAT,false,0,pos);
+            GLES20.glVertexAttribPointer(attributePosition,2,GLES20.GL_FLOAT,false,0,drawVertices);
             GLES20.glEnableVertexAttribArray(attributeUv);
             GLES20.glVertexAttribPointer(attributeUv,2,GLES20.GL_FLOAT,false,0,uv);
             GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP,0,4);
