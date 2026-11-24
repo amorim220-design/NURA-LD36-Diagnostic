@@ -2,7 +2,7 @@ name: Build APK - NURA LD36 Diagnostic
 on:
   workflow_dispatch:
   push:
-    branches: [main, feature/diagnostico-passivo-completo, feature/espelhamento-h264-v04]
+    branches: [main, feature/diagnostico-passivo-completo, feature/espelhamento-h264-v04, feature/ajuste-tela-v05]
   pull_request:
 
 jobs:
@@ -40,6 +40,8 @@ jobs:
           java -cp /tmp/nura-test com.nura.ld36diagnostic.ActiveProtocolSmokeTest
           javac -encoding UTF-8 -d /tmp/nura-test app/src/main/java/com/nura/ld36diagnostic/VideoPacket.java tests/VideoPacketSmokeTest.java
           java -cp /tmp/nura-test com.nura.ld36diagnostic.VideoPacketSmokeTest
+          javac -encoding UTF-8 -d /tmp/nura-test app/src/main/java/com/nura/ld36diagnostic/AspectCrop.java tests/AspectCropSmokeTest.java
+          java -cp /tmp/nura-test com.nura.ld36diagnostic.AspectCropSmokeTest
       - name: Compile debug APK
         run: gradle --no-daemon :app:assembleDebug
       - name: Upload APK
