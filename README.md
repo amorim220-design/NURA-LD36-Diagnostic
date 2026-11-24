@@ -1,3 +1,20 @@
+# v1.1 — AUTO ORIGINAL (teste isolado de mudança dinâmica de resolução H.264)
+
+Resultado real: Original v0.4 continua com imagem na TV; TV DIRETO v1.0 não apresentou imagem; GPU v0.8-v0.9 distorceu em todos os ângulos. Por isso o novo caminho inicia **exatamente como o Original** (MediaProjection -> VirtualDisplay -> MediaCodec Surface). Não usa EGL/OpenGL. Não altera os pacotes AOA/VDAT.
+
+No novo modo opt-in AUTO ORIGINAL, a codificação começa com **720x1280 em retrato** ou **1280x720 em paisagem**, como Original. Quando o Android reporta mudança real nas dimensões da tela, um processo de troca controlada:
+1. pausa o loop do antigo MediaCodec,
+2. cria um novo MediaCodec com dimensões da nova orientação,
+3. faz `VirtualDisplay.resize(newW,newH,dpi)` e `setSurface` na nova entrada do encoder,
+4. reinicia H.264 com SPS/PPS/IDR atualizados (sem renegociação de STAR, experimental).
+5. registra `AUTO ORIGINAL EVENTO`, `AUTO ORIGINAL TROCA`, `AUTO ORIGINAL TROCA OK` ou `FALHOU`.
+
+**Limitações conhecidas:** o dongle pode não aceitar alteração dinâmica de SPS/PPS/IDR sem novo handshake STAR; pode ficar preto depois do giro. Android também pode impor limite a mudança de Surface. Este experimento não comprova rotação automática funcional. Se ficar preto, testar Original novamente. Não usar em sessões importantes. Os botões de giro GPU não funcionam neste modo. Som permanece fora do escopo.
+
+Teste curto e comparável no hardware real: instalar APK -> selecionar AUTO ORIGINAL v1.1 -> iniciar em retrato e fotografar -> girar para paisagem e fotografar -> retornar a retrato -> exportar TXT. Testar Original v0.4 como controle se a imagem sumir. **Critério de validação:** imagem sempre presente, proporção natural e mudança de orientação sem esticar nem cortar; sem isso não aprovar.
+
+---
+
 # NURA LD36 v1.0.0 — teste isolado do compositor nativo Android
 
 Contexto: na TV real o protocolo AOA e H.264 funcionam. A v0.9 continua visualmente distorcida em todos os ângulos. O processamento da v0.5–v0.9 tem uma potencial **dupla transformação**: Android já ajusta a tela ao VirtualDisplay e a GPU ajusta novamente a textura com AspectFit/UV.
