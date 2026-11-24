@@ -35,6 +35,9 @@ public final class ScreenCropRenderer implements AutoCloseable {
     private final float[] textureMatrix = new float[16];
     private final java.nio.FloatBuffer pos = asBuffer(new float[]{-1,-1,1,-1,-1,1,1,1});
     private volatile int displayWidth,displayHeight;
+    private volatile int correctionDegrees;
+    private volatile boolean matrixLogged;
+    private volatile String matrixDiagnostic = "matriz ainda nao recebida";
     private java.nio.FloatBuffer uv;
     private final Surface encoderSurface;
     private final int sourceWidth, sourceHeight, encodedWidth, encodedHeight;
@@ -91,10 +94,8 @@ public final class ScreenCropRenderer implements AutoCloseable {
             try {
                 if (closed || sourceTexture == null) return;
                 sourceTexture.setDefaultBufferSize(width, height);
-                float[] geometry = AspectFit.vertices(width, height, encodedWidth, encodedHeight);
-                pos.clear();
-                pos.put(geometry);
-                pos.position(0);
+                updateGeometry(width,height);
+                matrixLogged = false;
                 displayWidth = width;
                 displayHeight = height;
                 updated.set(true);
@@ -110,6 +111,34 @@ public final class ScreenCropRenderer implements AutoCloseable {
         }
         return updated.get();
     }
+    /** Explicit correction for phones whose frames arrive with mismatched orientation. */
+    public void setCorrectionDegrees(int degrees) {
+        final int normalized=RotationGeometry.normalize(degrees);
+        Handler h=handler;
+        if (h==null || closed) return;
+        h.post(() -> {
+            if (closed || sourceTexture == null) return;
+            correctionDegrees=normalized;
+            updateGeometry(displayWidth,displayHeight);
+            android.util.Log.i("NURA-LD36","UV correction="+normalized+
+                " source="+displayWidth+"x"+displayHeight+
+                " output="+encodedWidth+"x"+encodedHeight);
+        });
+    }
+
+    public int getCorrectionDegrees() { return correctionDegrees; }
+    public String getMatrixDiagnostic() { return matrixDiagnostic; }
+
+    private void updateGeometry(int width,int height) {
+        float[] points=RotationGeometry.quad(width,height,encodedWidth,encodedHeight,correctionDegrees);
+        pos.clear();
+        pos.put(points);
+        pos.position(0);
+        float[] uvs=RotationGeometry.uv(correctionDegrees);
+        if (uv==null) uv=asBuffer(uvs);
+        else { uv.clear();uv.put(uvs);uv.position(0); }
+    }
+
     public int getRenderedFrames() { return rendered; }
 
     private void init() {
@@ -158,8 +187,7 @@ public final class ScreenCropRenderer implements AutoCloseable {
         uniformMatrix=GLES20.glGetUniformLocation(program,"uTex");
         uniformTexture=GLES20.glGetUniformLocation(program,"uImage");
         // No crop. Black bars are intentional if handset and TV ratios differ.
-        pos.clear();pos.put(AspectFit.vertices(sourceWidth,sourceHeight,encodedWidth,encodedHeight)).position(0);
-        uv=asBuffer(new float[]{0,0,1,0,0,1,1,1});
+        updateGeometry(sourceWidth,sourceHeight);
         GLES20.glViewport(0,0,encodedWidth,encodedHeight);
         sourceTexture.setOnFrameAvailableListener(st -> {
             if(!closed && handler!=null)handler.post(this::render);
@@ -185,6 +213,15 @@ public final class ScreenCropRenderer implements AutoCloseable {
         try {
             sourceTexture.updateTexImage();
             sourceTexture.getTransformMatrix(textureMatrix);
+            if (!matrixLogged) {
+                matrixLogged = true;
+                matrixDiagnostic = "SurfaceTexture UV rot="+correctionDegrees+
+                    " src="+displayWidth+"x"+displayHeight+
+                    " mat=["+textureMatrix[0]+","+textureMatrix[1]+","+
+                    textureMatrix[4]+","+textureMatrix[5]+","+
+                    textureMatrix[12]+","+textureMatrix[13]+"]";
+                android.util.Log.i("NURA-LD36",matrixDiagnostic);
+            }
             GLES20.glClearColor(0f,0f,0f,1f);GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
             GLES20.glUseProgram(program);
             GLES20.glActiveTexture(GLES20.GL_TEXTURE0);

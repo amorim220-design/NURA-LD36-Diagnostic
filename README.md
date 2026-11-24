@@ -1,3 +1,26 @@
+# NURA LD36 v0.8.0 — diagnóstico da orientação por rotação de textura
+
+Base factual: no relatório real de 23:01:29, o Android abriu a sessão com captura 1080x2400, encoder 1280x720; registrou REBOUND #1 ao mudar para 2400x1080 às 23:01:43 e REBOUND #2 ao voltar a 1080x2400 às 23:01:52. Ambos reportaram reanexação de superfície OK, mas os vídeos/fotos mostram imagem girada ou estreita. Rebind OK não demonstra enquadramento correto.
+
+## Mudanças v0.8
+
+- Mantém Original (v0.4) como padrão e conserva o transporte USB H.264 e o modo anterior para fallback.
+- Em Rotação experimental, acrescenta GIRAR IMAGEM DA TV 90°, que troca coordenadas UV e o aspecto correspondente na GPU, sem reiniciar MediaProjection, codec ou conexão USB. Toques sucessivos aplicam 0 -> 90 -> 180 -> 270 -> 0, somente a pedido do usuário.
+- Preserva a matriz de transformação SurfaceTexture produzida pelo Android. Log TXT inclui GPU DIAGNOSTICO, GPU APOS REBOUND, GPU APOS AJUSTE, ângulo manual e dimensões.
+- Não há recorte proposital: o modo experimental usa aspect-fit. Bordas para preservar a proporção são esperadas.
+- Envio: vídeo apenas. Áudio ainda não implementado.
+
+## Procedimento de validação no LD36 físico
+
+1. Instale v0.8; primeiro use Original e verifique o vídeo conhecido da v0.4.
+2. Pare e selecione Rotação experimental. Inicie autorizando captura e USB.
+3. Observe a TV em vertical e horizontal. Se aparecer de lado, toque GIRAR IMAGEM DA TV 90° uma vez, e repita até achar a orientação correta. Anote o número de toques.
+4. Verifique se a imagem inteira aparece sem distorção; se necessário, repita o ajuste após a rotação.
+5. Exporte TXT depois do teste. Procure GPU DIAGNOSTICO, GPU APOS AJUSTE, REBOUND e ORIENTACAO MANUAL.
+6. Se continuar falhando, volte ao modo Original. Esta correção não está comprovada em hardware real até novo teste.
+
+---
+
 # NURA LD36 v0.7.0 — diagnóstico direcionado de rotação (ainda experimental)
 
 **Evidência física:** a versão 0.4 exibiu vídeo na TV, com pequenas bordas; a 0.5 cortou a imagem e a 0.6 exibiu faixas, conteúdo girado e enquadramento errado. **Não declarar que v0.7 corrigiu até validar em hardware.**
