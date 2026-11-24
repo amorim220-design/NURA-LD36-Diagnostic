@@ -90,6 +90,11 @@ public final class MirrorProjectionService extends Service {
                     " graus; src=" + lastCaptureWidth + "x" + lastCaptureHeight +
                     " encoder=1280x720. Verifique a TV.");
                 requestKeyframe();
+                handler.postDelayed(() -> {
+                    if (cropRenderer != null && capturing.get()) {
+                        note("GPU APOS AJUSTE: " + cropRenderer.getMatrixDiagnostic());
+                    }
+                }, 350);
             } else {
                 note("Giro manual so disponivel durante espelhamento experimental.");
             }
@@ -178,6 +183,11 @@ public final class MirrorProjectionService extends Service {
                 note("Orientacao v0.8: UV manual=0, SurfaceTexture matriz preservada; " +
                     "toque Girar 90 se a imagem ficar de lado.");
                 handler.postDelayed(() -> refreshScreenDimensions("verificacao inicial"), 1200);
+                handler.postDelayed(() -> {
+                    if (cropRenderer != null && capturing.get()) {
+                        note("GPU DIAGNOSTICO: " + cropRenderer.getMatrixDiagnostic());
+                    }
+                }, 2200);
             }
             worker = new Thread(this::encodeLoop, "nura-h264");
             worker.start();
@@ -238,7 +248,9 @@ public final class MirrorProjectionService extends Service {
                     MediaCodec active = codec;
                     if (!capturing.get() || active == null) return;
                     requestKeyframe();
-                }, 250);
+                    if (cropRenderer != null)
+                        note("GPU APOS REBOUND: " + cropRenderer.getMatrixDiagnostic());
+                }, 400);
             } catch (Exception ex) {
                 failedRebinds++;
                 note("REBOUND FALHOU #" + failedRebinds + ": " + ex.getMessage());
