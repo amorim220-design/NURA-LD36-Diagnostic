@@ -17,6 +17,7 @@
             android:foregroundServiceType="mediaProjection" />
         <activity
             android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|smallestScreenSize|keyboardHidden|uiMode"
             android:exported="true"
             android:launchMode="singleTop">
             <intent-filter>
