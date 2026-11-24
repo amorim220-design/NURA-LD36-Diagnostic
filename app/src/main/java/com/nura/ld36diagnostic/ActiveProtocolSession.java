@@ -43,7 +43,7 @@ public final class ActiveProtocolSession {
         while (waiting.length - pos >= 4) {
             int length = get32(waiting, pos);
             if (length == 0) {
-                sink.send(new byte[] {0,0,0,0}, "ECHO_HEARTBEAT");
+                transmit(new byte[] {0,0,0,0}, "ECHO_HEARTBEAT");
                 echoedHeartbeats++;
                 pos += 4;
                 continue;
@@ -83,14 +83,14 @@ public final class ActiveProtocolSession {
             put16(rsp, 20, 1);
             put16(rsp, 22, 1);
             put32(rsp, 24, 0);
-            sink.send(rsp, "SYNC_REPLY_28");
+            transmit(rsp, "SYNC_REPLY_28");
             synced = true;
             byte[] msg = new byte[] {8,1,3,0,61,0,0,0,0,0};
             byte[] control = frame(30, "_PPA");
             put32(control, 8, magic);
             put32(control, 16, msg.length);
             System.arraycopy(msg, 0, control, 20, msg.length);
-            sink.send(control, "APP_MSG_SYNC_30");
+            transmit(control, "APP_MSG_SYNC_30");
             sink.note("SYNC recebido e respondido. Aguardando ACK/STAR do dongle.");
         } else if ("_PPA".equals(tag) && pkt.length >= 22) {
             int type = pkt[21] & 0xff;
@@ -123,11 +123,16 @@ public final class ActiveProtocolSession {
             rsp[41] = 2;
             put16(rsp,42,16);
             put32(rsp,44,48000);
-            sink.send(rsp,"STAR_REPLY_48_DIAGNOSTIC");
+            transmit(rsp,"STAR_REPLY_48_DIAGNOSTIC");
             sink.note("STAR confirmado; ainda sem captura de tela, video ou audio.");
         } else {
             sink.note("RX frame tag=" + tag + " len=" + pkt.length);
         }
+    }
+
+    private void transmit(byte[] data, String label) throws IOException {
+        sink.send(data, label);
+        replies++;
     }
 
     public synchronized String summary() {
