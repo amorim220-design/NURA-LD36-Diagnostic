@@ -59,6 +59,10 @@ public final class MainActivity extends Activity {
     private UsbAccessory accessory;
     private ParcelFileDescriptor descriptor;
     private InputStream input;
+    private FileOutputStream usbOutput;
+    private File txFile;
+    private boolean activeScanRequested = false;
+    private boolean activeScan = false;
     private Thread captureThread;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private volatile int generation = 0;
@@ -111,7 +115,7 @@ public final class MainActivity extends Activity {
         } else {
             registerReceiver(usbEvents, filter);
         }
-        appendLog("NURA LD36 Diagnostic v0.2.1: varredura automática disponível.");
+        appendLog("NURA LD36 Diagnostic v0.3.0: modo passivo e negociacao ativa controlada.");
         appendLog("Modo passivo: somente RX. Nenhum comando será enviado ao dongle.");
         appendLog("Feche o aplicativo Mirror original antes de conectar o LD36.");
         discoverAccessory();
@@ -151,7 +155,7 @@ public final class MainActivity extends Activity {
         TextView title = text("LD36 Diagnostic", 28, INK, Typeface.BOLD);
         title.setPadding(0, dp(7), 0, dp(5));
         root.addView(title);
-        TextView subtitle = text("VERSÃO 0.2.1 • VARREDURA AUTOMÁTICA • SEM ROOT", 13, ACCENT, Typeface.BOLD);
+        TextView subtitle = text("VERSÃO 0.3.0 • DIAGNÓSTICO USB AOA", 13, ACCENT, Typeface.BOLD);
         root.addView(subtitle);
 
         LinearLayout statusCard = columnCard();
@@ -169,16 +173,28 @@ public final class MainActivity extends Activity {
         Button scanButton = button("Detectar", PANEL, INK);
         connectButton = button("Conectar RX", ACCENT, BG);
         stopButton = button("Parar", PANEL, INK);
-        Button autoButton = button("▶ INICIAR VARREDURA COMPLETA (60s)", ACCENT, BG);
+        Button autoButton = button("▶ VARREDURA PASSIVA (60s)", ACCENT, BG);
+        Button activeButton = button("▶ NEGOCIAR PROTOCOLO (60s)", PANEL, INK);
         stopButton.setEnabled(false);
         addButton(commands, scanButton);
         addButton(commands, connectButton);
         addButton(commands, stopButton);
         addToRoot(root, autoButton, 14);
+        addToRoot(root, activeButton, 8);
         scanButton.setOnClickListener(v -> discoverAccessory());
         connectButton.setOnClickListener(v -> connectWithPermission());
         stopButton.setOnClickListener(v -> stopCapture());
+        activeButton.setOnClickListener(v -> {
+            if (running.get()) {
+                appendLog("Encerre a captura anterior antes de iniciar a negociação.");
+                return;
+            }
+            activeScanRequested = true;
+            autoScanRequested = true;
+            connectWithPermission();
+        });
         autoButton.setOnClickListener(v -> {
+            activeScanRequested = false;
             if (running.get()) {
                 appendLog("Já existe uma captura ativa. Pare-a antes da varredura automática.");
                 return;
@@ -212,10 +228,13 @@ public final class MainActivity extends Activity {
         Button exportBin = button("Exportar BIN", PANEL, INK);
         addButton(exportRow, exportText);
         addButton(exportRow, exportBin);
+        Button exportTx = button("Exportar TX", PANEL, INK);
+        addToRoot(root, exportTx, 8);
+        exportTx.setOnClickListener(v -> requestExportTx());
         exportText.setOnClickListener(v -> requestExport(false));
         exportBin.setOnClickListener(v -> requestExport(true));
 
-        TextView note = text("IMPORTANTE: leituras USB podem conter fragmentos de mensagens, não pacotes completos. Este app não intercepta dados do Mirror original e não transmite vídeo.", 12, MUTED, Typeface.NORMAL);
+        TextView note = text("O modo ativo ecoa heartbeats e responde somente a SYNC/STAR recebidos. Não grava tela, não transmite vídeo/áudio e não intercepta o Mirror. Use com o Mirror fechado.", 12, MUTED, Typeface.NORMAL);
         note.setPadding(0, dp(17), 0, 0);
         root.addView(note);
     }
@@ -300,15 +319,21 @@ public final class MainActivity extends Activity {
                 return;
             }
             FileInputStream in = new FileInputStream(pfd.getFileDescriptor());
+            FileOutputStream out = new FileOutputStream(pfd.getFileDescriptor());
             descriptor = pfd;
             input = in;
+            usbOutput = out;
+            activeScan = activeScanRequested;
+            activeScanRequested = false;
             String stamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
             File dir = getExternalFilesDir(null);
             if (dir == null) dir = getFilesDir();
             textFile = new File(dir, "NURA_LD36_" + stamp + ".txt");
             rawFile = new File(dir, "NURA_LD36_RX_" + stamp + ".bin");
+            txFile = new File(dir, "NURA_LD36_TX_" + stamp + ".bin");
             textFile.createNewFile();
             rawFile.createNewFile();
+            txFile.createNewFile();
             totalBytes = 0;
             chunks = 0;
             metricsView.setText("0 bytes  •  0 leituras USB");
@@ -319,7 +344,9 @@ public final class MainActivity extends Activity {
             connectButton.setEnabled(false);
             stopButton.setEnabled(true);
             appendLog("Canal AOA aberto. Sessão " + stamp + ". Aguardando dados RX...");
-            captureThread = new Thread(() -> captureLoop(session, in, rawFile), "ld36-rx");
+            appendLog(activeScan ? "Modo ATIVO: eco heartbeat e respostas SYNC/STAR conhecidas." :
+                "Modo PASSIVO: nenhum TX.");
+            captureThread = new Thread(() -> captureLoop(session, in, rawFile, out, txFile, activeScan), "ld36-rx");
             captureThread.start();
         } catch (Exception e) {
             setStatus("Erro ao abrir acessório", WARNING);
@@ -339,8 +366,24 @@ public final class MainActivity extends Activity {
         }, AUTO_SCAN_MS);
     }
 
-    private void captureLoop(int session, FileInputStream in, File targetRaw) {
+    private void captureLoop(int session, FileInputStream in, File targetRaw,
+                             FileOutputStream output, File targetTx, boolean active) {
         StreamProbe probe = new StreamProbe();
+        ActiveProtocolSession activeSession = active ? new ActiveProtocolSession(new ActiveProtocolSession.Sink() {
+            @Override public void send(byte[] data, String label) throws IOException {
+                // On the same capture thread: ordered with received frames, never simultaneous writes.
+                output.write(data);
+                output.flush();
+                try (FileOutputStream tx = new FileOutputStream(targetTx, true)) {
+                    tx.write(data);
+                }
+                logFromWorker(session, "TX " + label + " (" + data.length + " B) HEX="
+                    + ProtocolInspector.toHex(data, 0, Math.min(data.length, 48)));
+            }
+            @Override public void note(String message) {
+                logFromWorker(session, message);
+            }
+        }) : null;
         long bytes = 0;
         long reads = 0;
         boolean rawLimitLogged = false;
@@ -356,6 +399,7 @@ public final class MainActivity extends Activity {
                 reads++;
                 bytes += count;
                 probe.add(buffer, count);
+                if (activeSession != null) activeSession.accept(buffer, count);
                 if (bytes - count < RAW_CAPTURE_LIMIT) {
                     int canWrite = (int) Math.min(count, RAW_CAPTURE_LIMIT - (bytes - count));
                     raw.write(buffer, 0, canWrite);
@@ -389,7 +433,8 @@ public final class MainActivity extends Activity {
         } catch (RuntimeException e) {
             logFromWorker(session, "Falha de leitura: " + e.getClass().getSimpleName() + ": " + e.getMessage());
         } finally {
-            String summary = probe.report();
+            String summary = probe.report()
+                + (activeSession == null ? " | Modo passivo." : " | " + activeSession.summary());
             // Write summary directly to the session log even if generation changed on stop.
             appendSessionSummary(summary);
             runOnUiThread(() -> {
@@ -414,6 +459,7 @@ public final class MainActivity extends Activity {
 
     private void stopCapture() {
         autoScanRequested = false;
+        activeScanRequested = false;
         if (!running.get() && descriptor == null) return;
         running.set(false);
         generation++;
@@ -426,9 +472,23 @@ public final class MainActivity extends Activity {
 
     private void closeResources() {
         try { if (input != null) input.close(); } catch (IOException ignored) { }
+        try { if (usbOutput != null) usbOutput.close(); } catch (IOException ignored) { }
+        usbOutput = null;
         try { if (descriptor != null) descriptor.close(); } catch (IOException ignored) { }
         input = null;
         descriptor = null;
+    }
+
+    private void requestExportTx() {
+        if (txFile == null || !txFile.exists()) {
+            appendLog("Ainda não existe captura TX.");
+            return;
+        }
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("application/octet-stream");
+        intent.putExtra(Intent.EXTRA_TITLE, txFile.getName());
+        startActivityForResult(intent, 4003);
     }
 
     private void requestExport(boolean raw) {
@@ -448,8 +508,8 @@ public final class MainActivity extends Activity {
         super.onActivityResult(requestCode, resultCode, data);
         if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
         boolean raw = requestCode == REQ_EXPORT_RAW;
-        if (!raw && requestCode != REQ_EXPORT_TEXT) return;
-        File source = raw ? rawFile : textFile;
+        if (!raw && requestCode != REQ_EXPORT_TEXT && requestCode != 4003) return;
+        File source = requestCode == 4003 ? txFile : (raw ? rawFile : textFile);
         Uri destination = data.getData();
         if (source == null) return;
         new Thread(() -> {
