@@ -9,6 +9,8 @@ import android.content.Intent;
 import android.content.pm.ServiceInfo;
 import android.graphics.PixelFormat;
 import android.hardware.display.DisplayManager;
+import android.graphics.Point;
+import android.view.Display;
 import android.hardware.display.VirtualDisplay;
 import android.media.MediaCodec;
 import android.media.MediaCodecInfo;
@@ -50,6 +52,11 @@ public final class MirrorProjectionService extends Service {
     private Surface inputSurface;
     private VirtualDisplay display;
     private ScreenCropRenderer cropRenderer;
+    private DisplayManager displayManager;
+    private DisplayManager.DisplayListener orientationListener;
+    private int dpiValue;
+    private volatile int lastCaptureWidth;
+    private volatile int lastCaptureHeight;
     private Thread worker;
     private final Handler handler = new Handler(Looper.getMainLooper());
 
@@ -85,6 +92,9 @@ public final class MirrorProjectionService extends Service {
             projection = manager.getMediaProjection(result, consent);
             if (projection == null) throw new IOException("Android recusou MediaProjection");
             projection.registerCallback(new MediaProjection.Callback() {
+                @Override public void onCapturedContentResize(int width,int height) {
+                    updateCaptureDimensions(width,height,"MediaProjection");
+                }
                 @Override public void onStop() {
                     note("Captura revogada pelo Android.");
                     stopAll();
@@ -107,6 +117,7 @@ public final class MirrorProjectionService extends Service {
             inputSurface = codec.createInputSurface();
             codec.start();
             boolean crop = intent.getBooleanExtra(EXTRA_CROP, false);
+            dpiValue=dpi;
             int sourceWidth = intent.getIntExtra(EXTRA_SOURCE_WIDTH, width);
             int sourceHeight = intent.getIntExtra(EXTRA_SOURCE_HEIGHT, height);
             if (crop && sourceWidth >= 320 && sourceHeight >= 320 &&
@@ -117,12 +128,28 @@ public final class MirrorProjectionService extends Service {
                 display = projection.createVirtualDisplay("NURA-LD36", sourceWidth, sourceHeight, dpi,
                     DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
                     cropRenderer.getCaptureSurface(), null, handler);
-                note("Preencher TV: recorte central proporcional " + sourceWidth + "x" + sourceHeight
-                    + " -> " + width + "x" + height + " (sem esticar).");
+                lastCaptureWidth=sourceWidth;
+                lastCaptureHeight=sourceHeight;
+                note("Rotacao automatica: fonte " + sourceWidth + "x" + sourceHeight +
+                    " -> TV " + width + "x" + height + " (sem cortes).");
+                displayManager = (DisplayManager) getSystemService(DISPLAY_SERVICE);
+                orientationListener=new DisplayManager.DisplayListener() {
+                    @Override public void onDisplayAdded(int id) { }
+                    @Override public void onDisplayRemoved(int id) { }
+                    @Override public void onDisplayChanged(int id) {
+                        if (id != Display.DEFAULT_DISPLAY) return;
+                        Display current = displayManager.getDisplay(Display.DEFAULT_DISPLAY);
+                        if(current==null)return;
+                        Point p=new Point();
+                        current.getRealSize(p);
+                        updateCaptureDimensions(p.x,p.y,"rotacao Android");
+                    }
+                };
+                if(displayManager!=null)displayManager.registerDisplayListener(orientationListener,handler);
             } else {
                 display = projection.createVirtualDisplay("NURA-LD36", width, height, dpi,
                     DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, inputSurface, null, handler);
-                note("Modo Original: sem recorte. A imagem pode ter bordas.");
+                note("Modo Original 0.4: captura direta preservada.");
             }
             capturing.set(true);
             note("Captura H264 iniciada " + width + "x" + height + " 30fps; enviando VDAT.");
@@ -134,6 +161,24 @@ public final class MirrorProjectionService extends Service {
             stopSelf();
         }
         return START_NOT_STICKY;
+    }
+
+    private void updateCaptureDimensions(int width,int height,String reason) {
+        handler.post(() -> {
+            if (!capturing.get() || cropRenderer==null || display==null) return;
+            if(width<240||height<240||width>4096||height>4096)return;
+            if(width==lastCaptureWidth&&height==lastCaptureHeight)return;
+            try {
+                lastCaptureWidth=width;
+                lastCaptureHeight=height;
+                cropRenderer.updateCapturedSize(width,height);
+                display.resize(width,height,dpiValue);
+                note("Orientacao alterada (" + reason + "): " + width + "x" + height
+                    + " -> TV 1280x720, proporcao preservada sem cortes.");
+            } catch(Exception ex) {
+                note("Erro ao redimensionar captura: " + ex.getMessage());
+            }
+        });
     }
 
     private void foreground() {
@@ -233,6 +278,11 @@ public final class MirrorProjectionService extends Service {
 
     private synchronized void stopAll() {
         capturing.set(false);
+        if(displayManager!=null && orientationListener!=null) {
+            try {displayManager.unregisterDisplayListener(orientationListener);}
+            catch(Exception ignored) { }
+            orientationListener=null;displayManager=null;
+        }
         if (display != null) { display.release(); display = null; }
         if (cropRenderer != null) { cropRenderer.close(); cropRenderer = null; }
         if (inputSurface != null) { inputSurface.release(); inputSurface = null; }
