@@ -18,7 +18,7 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * GPU-only screen compositor: captures real display to a SurfaceTexture and
- * crops the center to a 16:9 encoder surface without stretching content.
+ * fits the entire changing screen inside a fixed encoder surface without cropping.
  * EGL stays on one HandlerThread; never read back frames through the CPU.
  */
 public final class ScreenCropRenderer implements AutoCloseable {
@@ -33,8 +33,8 @@ public final class ScreenCropRenderer implements AutoCloseable {
     private int program;
     private int attributePosition, attributeUv, uniformTexture, uniformMatrix;
     private final float[] textureMatrix = new float[16];
-    private final float[] quad = {-1f,-1f, 1f,-1f, -1f,1f, 1f,1f};
-    private final java.nio.FloatBuffer pos = asBuffer(quad);
+    private final java.nio.FloatBuffer pos = asBuffer(new float[]{-1,-1,1,-1,-1,1,1,1});
+    private volatile int displayWidth,displayHeight;
     private java.nio.FloatBuffer uv;
     private final Surface encoderSurface;
     private final int sourceWidth, sourceHeight, encodedWidth, encodedHeight;
@@ -53,6 +53,7 @@ public final class ScreenCropRenderer implements AutoCloseable {
                               int outputW, int outputH) throws Exception {
         encoderSurface=destination;
         sourceWidth=sourceW;sourceHeight=sourceH;
+        displayWidth=sourceW;displayHeight=sourceH;
         encodedWidth=outputW;encodedHeight=outputH;
         thread.start();
         handler=new Handler(thread.getLooper());
@@ -74,6 +75,20 @@ public final class ScreenCropRenderer implements AutoCloseable {
     }
 
     public Surface getCaptureSurface() { return sourceSurface; }
+
+    /** Resize capture buffer and recalculate the aspect-correct quad on the EGL thread. */
+    public void updateCapturedSize(int width,int height) {
+        if(closed||width<240||height<240||width>4096||height>4096)return;
+        if(width==displayWidth&&height==displayHeight)return;
+        displayWidth=width;displayHeight=height;
+        Handler h=handler;
+        if(h!=null)h.post(() -> {
+            if(closed||sourceTexture==null)return;
+            sourceTexture.setDefaultBufferSize(width,height);
+            float[] v=AspectFit.vertices(width,height,encodedWidth,encodedHeight);
+            pos.clear();pos.put(v).position(0);
+        });
+    }
     public int getRenderedFrames() { return rendered; }
 
     private void init() {
@@ -121,11 +136,9 @@ public final class ScreenCropRenderer implements AutoCloseable {
         attributeUv=GLES20.glGetAttribLocation(program,"aUv");
         uniformMatrix=GLES20.glGetUniformLocation(program,"uTex");
         uniformTexture=GLES20.glGetUniformLocation(program,"uImage");
-        // Screen source is captured at real native dimensions. Center crop
-        // the excess only, never stretch.
-        float[] rect=AspectCrop.centerCrop(sourceWidth,sourceHeight,encodedWidth,encodedHeight);
-        uv=asBuffer(new float[]{rect[0],rect[1],rect[2],rect[1],
-                                rect[0],rect[3],rect[2],rect[3]});
+        // No crop. Black bars are intentional if handset and TV ratios differ.
+        pos.clear();pos.put(AspectFit.vertices(sourceWidth,sourceHeight,encodedWidth,encodedHeight)).position(0);
+        uv=asBuffer(new float[]{0,0,1,0,0,1,1,1});
         GLES20.glViewport(0,0,encodedWidth,encodedHeight);
         sourceTexture.setOnFrameAvailableListener(st -> {
             if(!closed && handler!=null)handler.post(this::render);
