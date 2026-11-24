@@ -1,3 +1,29 @@
+# NURA LD36 v0.6.0 — corrigir rotação após abrir jogos
+
+**Sintoma real:** v0.4 mostra imagem correta se inicia em horizontal, mas se um aplicativo gira o celular depois de começar a transmissão, a TV pode mostrar um pedaço ou recorte da tela. O modo de recorte GPU da v0.5 também apresentou travamentos ou distorções no teste real.
+
+## Alterações
+
+- A Activity aceita mudanças de orientação sem ser destruída, preservando USB AOA, MediaProjection e MediaCodec.
+- Novo modo **AUTO — acompanha rotação, sem cortes** (seleção inicial recomendada). A saída USB H.264 mantém uma superfície 1280×720 enquanto a captura nativa do telefone muda entre horizontal e vertical.
+- `MediaProjection.Callback.onCapturedContentResize` atualiza a textura, o enquadramento da GPU e redimensiona o **mesmo** `VirtualDisplay`, sem criar uma segunda sessão.
+- Quando a tela do celular fica na vertical, o modo AUTO usa barras laterais (pillarbox) para preservar conteúdo; na horizontal, preenche proporcionalmente sem cortar.
+- **Original (v0.4)** permanece disponível como fallback seguro. Se girar a tela nesse modo, encerre e reinicie o teste.
+- **Preencher TV** permanece experimental e pode cortar conteúdo lateral, devido à proporção.
+- Logs de redimensionamento no arquivo TXT ajudam diagnosticar se o Android notificou cada mudança.
+
+## Teste em hardware
+
+1. Feche o Mirror original. Instale v0.6.
+2. Deixe o telefone na vertical. Selecione **AUTO** e toque em **ESPELHAR VÍDEO (TESTE 90s)**; autorize a captura.
+3. Abra o mesmo aplicativo/jogo que muda a orientação; gire o telefone para a horizontal **sem reiniciar a captura**.
+4. Confira se a imagem passa a ocupar a largura da TV corretamente, sem recortes. Volte para a vertical e repita.
+5. Se houver erro, pressione Parar, selecione **Original** e inicie somente depois de girar para a posição desejada. Envie TXT/RX/TX da sessão com falha.
+
+**Esta atualização foi compilada/testada em CI, mas a correção de rotação depende de validação física no adaptador LD36.** A versão continua sem envio de áudio. Não confundir a atualização do tamanho do VirtualDisplay com uma garantia de que a TV mostrará o quadro corretamente.
+
+---
+
 # NURA LD36 v0.5 — ajuste de preenchimento sem distorção
 
 Depois de o usuário comprovar que o vídeo H.264 apareceu corretamente na TV com **pequenas bordas superior e inferior no modo horizontal**, a v0.5 preserva o modo Original da v0.4 e acrescenta um modo experimental de **Preencher TV sem esticar**.
