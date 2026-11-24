@@ -39,6 +39,9 @@ public final class MirrorProjectionService extends Service {
     public static final String EXTRA_WIDTH = "width";
     public static final String EXTRA_HEIGHT = "height";
     public static final String EXTRA_DPI = "dpi";
+    public static final String EXTRA_SOURCE_WIDTH = "source_width";
+    public static final String EXTRA_SOURCE_HEIGHT = "source_height";
+    public static final String EXTRA_CROP = "center_crop";
     private static final int NOTIFICATION_ID = 36;
     private static final String CHANNEL = "ld36_projection";
     private final AtomicBoolean capturing = new AtomicBoolean(false);
@@ -46,6 +49,7 @@ public final class MirrorProjectionService extends Service {
     private MediaCodec codec;
     private Surface inputSurface;
     private VirtualDisplay display;
+    private ScreenCropRenderer cropRenderer;
     private Thread worker;
     private final Handler handler = new Handler(Looper.getMainLooper());
 
@@ -102,8 +106,24 @@ public final class MirrorProjectionService extends Service {
             codec.configure(fmt, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
             inputSurface = codec.createInputSurface();
             codec.start();
-            display = projection.createVirtualDisplay("NURA-LD36", width, height, dpi,
-                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, inputSurface, null, handler);
+            boolean crop = intent.getBooleanExtra(EXTRA_CROP, false);
+            int sourceWidth = intent.getIntExtra(EXTRA_SOURCE_WIDTH, width);
+            int sourceHeight = intent.getIntExtra(EXTRA_SOURCE_HEIGHT, height);
+            if (crop && sourceWidth >= 320 && sourceHeight >= 320 &&
+                    sourceWidth <= 4096 && sourceHeight <= 4096) {
+                // Encoder stays 1280x720; display captures at native screen size.
+                // GPU performs proportional center crop, preserving pixel geometry.
+                cropRenderer = new ScreenCropRenderer(inputSurface, sourceWidth, sourceHeight, width, height);
+                display = projection.createVirtualDisplay("NURA-LD36", sourceWidth, sourceHeight, dpi,
+                    DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                    cropRenderer.getCaptureSurface(), null, handler);
+                note("Preencher TV: recorte central proporcional " + sourceWidth + "x" + sourceHeight
+                    + " -> " + width + "x" + height + " (sem esticar).");
+            } else {
+                display = projection.createVirtualDisplay("NURA-LD36", width, height, dpi,
+                    DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, inputSurface, null, handler);
+                note("Modo Original: sem recorte. A imagem pode ter bordas.");
+            }
             capturing.set(true);
             note("Captura H264 iniciada " + width + "x" + height + " 30fps; enviando VDAT.");
             worker = new Thread(this::encodeLoop, "nura-h264");
@@ -214,6 +234,7 @@ public final class MirrorProjectionService extends Service {
     private synchronized void stopAll() {
         capturing.set(false);
         if (display != null) { display.release(); display = null; }
+        if (cropRenderer != null) { cropRenderer.close(); cropRenderer = null; }
         if (inputSurface != null) { inputSurface.release(); inputSurface = null; }
         if (codec != null) {
             try { codec.stop(); } catch (Exception ignored) { }

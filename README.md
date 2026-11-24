@@ -1,3 +1,21 @@
+# NURA LD36 v0.5 — ajuste de preenchimento sem distorção
+
+Depois de o usuário comprovar que o vídeo H.264 apareceu corretamente na TV com **pequenas bordas superior e inferior no modo horizontal**, a v0.5 preserva o modo Original da v0.4 e acrescenta um modo experimental de **Preencher TV sem esticar**.
+
+## Como testar
+
+1. Instale a v0.5 e feche o Mirror original. Gire o celular para a horizontal **antes** de iniciar.
+2. Selecione **Preencher TV (sem distorcer)** no seletor AJUSTE NA TV e toque ESPELHAR VÍDEO (TESTE 90s).
+3. Autorize a captura pelo Android e a conexão AOA USB. Compare a imagem na TV com a v0.4.
+4. Se ocorrer tela preta, artefato de imagem, cortes indevidos ou travamento, pressione Parar, selecione **Original (sem cortes)** e repita. O modo Original continua usando o caminho direto já validado na v0.4.
+5. Exporte TXT, RX e TX da sessão para análise. A captura TX em disco continua limitada a 32 MiB, sem limitar a transmissão real.
+
+**Implementação:** o modo Preencher captura a tela na resolução nativa que o Android reporta, usa `SurfaceTexture` + OpenGL ES 2.0 em uma thread de GPU para realizar **recorte central proporcional**, e alimenta a superfície do encoder H.264 em 1280×720 na horizontal. Preserva os pixels sem esticamento, mas pode cortar conteúdo nas laterais se o celular for mais largo que a TV. O modo Original não executa a GPU extra. O serviço mantém a notificação persistente de captura. A seleção é armazenada no próprio app, e vale para a próxima sessão.
+
+**Ainda experimental no hardware:** a v0.5 passou por revisão de código/testes e requer observação na TV; a funcionalidade nova não foi validada por captura real até o usuário instalá-la. Sem áudio nesta versão.
+
+---
+
 # NURA LD36 Diagnostic v0.4.0 — espelhamento H.264 experimental
 
 Este APK acrescenta um modo experimental de captura de tela e vídeo USB/AOA. A versão atual **ainda não foi validada no adaptador físico após adicionar o vídeo**.
