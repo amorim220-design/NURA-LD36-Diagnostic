@@ -47,6 +47,8 @@ public final class MirrorProjectionService extends Service {
     public static final String EXTRA_SOURCE_WIDTH = "source_width";
     public static final String EXTRA_SOURCE_HEIGHT = "source_height";
     public static final String EXTRA_CROP = "center_crop";
+    /** Single native Android projection scaling into the TV resolution. No secondary GL. */
+    public static final String EXTRA_DIRECT_TV = "direct_tv";
     private static final int NOTIFICATION_ID = 36;
     private static final String CHANNEL = "ld36_projection";
     private final AtomicBoolean capturing = new AtomicBoolean(false);
@@ -63,6 +65,7 @@ public final class MirrorProjectionService extends Service {
     private volatile int correctionDegrees;
     private volatile int successfulRebinds;
     private volatile int failedRebinds;
+    private volatile boolean directTvMode;
     private Thread worker;
     private final Handler handler = new Handler(Looper.getMainLooper());
 
@@ -137,7 +140,15 @@ public final class MirrorProjectionService extends Service {
             if (projection == null) throw new IOException("Android recusou MediaProjection");
             projection.registerCallback(new MediaProjection.Callback() {
                 @Override public void onCapturedContentResize(int width,int height) {
-                    updateCaptureDimensions(width,height,"MediaProjection");
+                    // For TV-direct the codec Surface is fixed 1280x720. Keep
+                    // Android's own compositing: resizing from this callback
+                    // would break the TV aspect ratio.
+                    if (directTvMode) {
+                        note("TV DIRETO CONTEUDO: "+width+"x"+height+
+                            " -> surface codificador fixa 1280x720.");
+                    } else {
+                        updateCaptureDimensions(width,height,"MediaProjection");
+                    }
                 }
                 @Override public void onStop() {
                     note("Captura revogada pelo Android.");
@@ -161,10 +172,33 @@ public final class MirrorProjectionService extends Service {
             inputSurface = codec.createInputSurface();
             codec.start();
             boolean crop = intent.getBooleanExtra(EXTRA_CROP, false);
+            directTvMode = intent.getBooleanExtra(EXTRA_DIRECT_TV, false);
             dpiValue=dpi;
             int sourceWidth = intent.getIntExtra(EXTRA_SOURCE_WIDTH, width);
             int sourceHeight = intent.getIntExtra(EXTRA_SOURCE_HEIGHT, height);
-            if (crop && sourceWidth >= 320 && sourceHeight >= 320 &&
+            if (directTvMode) {
+                // Android owns both the screen-to-TV scaling and rotation. Do not
+                // sample an already-fitted VirtualDisplay frame and fit it AGAIN.
+                // The codec/USB sink remains a stable 1280x720 surface.
+                display = projection.createVirtualDisplay("NURA-LD36-TV-DIRECT",
+                    width, height, dpi, DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                    inputSurface, null, handler);
+                lastCaptureWidth = sourceWidth;
+                lastCaptureHeight = sourceHeight;
+                displayManager = (DisplayManager)getSystemService(DISPLAY_SERVICE);
+                orientationListener = new DisplayManager.DisplayListener() {
+                    @Override public void onDisplayAdded(int id) { }
+                    @Override public void onDisplayRemoved(int id) { }
+                    @Override public void onDisplayChanged(int id) {
+                        if(id != Display.DEFAULT_DISPLAY) return;
+                        refreshScreenDimensions("display fisico (direto)");
+                    }
+                };
+                if(displayManager != null)
+                    displayManager.registerDisplayListener(orientationListener,handler);
+                note("TV DIRETO v1.0: MediaProjection -> MediaCodec 1280x720; " +
+                    "Android compoe proporcao, sem OpenGL nem redimensionamento duplicado.");
+            } else if (crop && sourceWidth >= 320 && sourceHeight >= 320 &&
                     sourceWidth <= 4096 && sourceHeight <= 4096) {
                 // Encoder stays 1280x720; display captures at native screen size.
                 // GPU performs proportional center crop, preserving pixel geometry.
@@ -193,6 +227,9 @@ public final class MirrorProjectionService extends Service {
             }
             capturing.set(true);
             note("Captura H264 iniciada " + width + "x" + height + " 30fps; enviando VDAT.");
+            if (directTvMode) {
+                handler.postDelayed(() -> refreshScreenDimensions("verificacao inicial TV direto"), 1400);
+            }
             if (cropRenderer != null) {
                 note("Orientacao v0.8: UV manual=0, SurfaceTexture matriz preservada; " +
                     "toque Girar 90 se a imagem ficar de lado.");
@@ -237,9 +274,21 @@ public final class MirrorProjectionService extends Service {
 
     private void updateCaptureDimensions(int width,int height,String reason) {
         handler.post(() -> {
-            if (!capturing.get() || cropRenderer == null || display == null) return;
+            if (!capturing.get() || display == null) return;
             if(width < 240 || height < 240 || width > 4096 || height > 4096)return;
             if(width == lastCaptureWidth && height == lastCaptureHeight)return;
+            if (directTvMode) {
+                int oldW=lastCaptureWidth, oldH=lastCaptureHeight;
+                lastCaptureWidth=width; lastCaptureHeight=height;
+                note("TV DIRETO ROTACAO ("+reason+"): fonte "+oldW+"x"+oldH+
+                    " -> "+width+"x"+height+
+                    "; Surface encoder=1280x720 INALTERADA, Android faz fit nativo.");
+                // Android composes new source into the same fixed 16:9 display.
+                // Never resize or rebind the codec input Surface here.
+                handler.postDelayed(this::requestKeyframe, 250);
+                return;
+            }
+            if (cropRenderer == null) return;
             int oldW = lastCaptureWidth, oldH = lastCaptureHeight;
             Surface captureSurface = cropRenderer.getCaptureSurface();
             try {
