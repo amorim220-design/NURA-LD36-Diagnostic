@@ -1,3 +1,30 @@
+# NURA LD36 Diagnostic v0.4.0 — espelhamento H.264 experimental
+
+Este APK acrescenta um modo experimental de captura de tela e vídeo USB/AOA. A versão atual **ainda não foi validada no adaptador físico após adicionar o vídeo**.
+
+## Teste de vídeo — procedimento
+
+1. Feche o aplicativo Mirror original.
+2. Conecte o LD36 à TV (HDMI), alimentação e USB-C ao telefone.
+3. Abra NURA LD36 Diagnostic **v0.4.0** e toque em **ESPELHAR VÍDEO (TESTE 90s)**.
+4. Autorize o aviso do Android para capturar a tela. Depois, conceda acesso USB ao LD36 se solicitado.
+5. O aplicativo responde ao handshake SYNC/STAR já capturado fisicamente. **Somente depois de STAR** ele inicia um serviço de primeiro plano com MediaProjection, MediaCodec AVC, VirtualDisplay e transmite pacotes MIRR/VDAT com vídeo H.264 Annex-B.
+6. Abra uma tela simples no celular; verifique se aparece imagem na TV. A captura tem notificação persistente enquanto ativa.
+7. Toque **Parar** para encerrar antes dos 90 segundos ou deixe terminar. Exporte TXT/RX/TX. O arquivo TX é limitado a 32 MiB de captura, embora o envio USB continue.
+8. Os controles de varredura passiva e negociação ativa anteriores continuam disponíveis.
+
+**Limites conhecidos:** não transmite áudio; não faz controle de toque remoto; a codificação pode falhar em dispositivos sem H.264 Surface encoder; a TV pode não mostrar vídeo se parâmetros de inicialização, resoluções, áudio ou formatos diferirem do aplicativo original. Isso é um experimento, não uma garantia de reprodução. O serviço de captura só inicia com consentimento expresso do Android, e encerra ao parar, em falha de captura ou desligamento USB.
+
+### Fluxo técnico
+- AOA RX: `StreamProbe` + `ActiveProtocolSession` montam mensagens mesmo fragmentadas.
+- Handshake: heartbeat ecoado, SYNC 25→28, APP_SYNC, STAR 32→48.
+- A autorização do Android inicia `MirrorProjectionService` **apenas ao receber STAR**, e uma notificação de primeiro plano é mostrada.
+- O encoder surface H.264 envia SPS/PPS + quadros IDR/P; `VideoPacket.make()` encapsula em MIRR/TADV de 32 + N bytes.
+- Um lock serializa TX de vídeo e TX de controle para não misturar frames.
+- Relatório de texto registra quadros transmitidos e erros, sem copiar cada payload H.264 na tela.
+
+---
+
 # NURA LD36 Diagnostic v0.3.0
 
 Aplicativo Android para diagnóstico do LD36 via USB AOA sem root.
