@@ -123,14 +123,9 @@ public final class ScreenCropRenderer implements AutoCloseable {
         uniformTexture=GLES20.glGetUniformLocation(program,"uImage");
         // Screen source is captured at real native dimensions. Center crop
         // the excess only, never stretch.
-        float inputRatio=(float)sourceWidth/sourceHeight;
-        float outputRatio=(float)encodedWidth/encodedHeight;
-        float cropW=1f,cropH=1f;
-        if(inputRatio>outputRatio)cropW=outputRatio/inputRatio;
-        else cropH=inputRatio/outputRatio;
-        float x0=(1f-cropW)*0.5f, x1=x0+cropW;
-        float y0=(1f-cropH)*0.5f, y1=y0+cropH;
-        uv=asBuffer(new float[]{x0,y0,x1,y0,x0,y1,x1,y1});
+        float[] rect=AspectCrop.centerCrop(sourceWidth,sourceHeight,encodedWidth,encodedHeight);
+        uv=asBuffer(new float[]{rect[0],rect[1],rect[2],rect[1],
+                                rect[0],rect[3],rect[2],rect[3]});
         GLES20.glViewport(0,0,encodedWidth,encodedHeight);
         sourceTexture.setOnFrameAvailableListener(st -> {
             if(!closed && handler!=null)handler.post(this::render);
@@ -193,6 +188,15 @@ public final class ScreenCropRenderer implements AutoCloseable {
     @Override public void close() {
         if(closed)return;
         closed=true;
-        if(handler!=null)handler.post(() -> {cleanup();thread.quitSafely();});
+        if(handler!=null) {
+            CountDownLatch released=new CountDownLatch(1);
+            handler.post(() -> {
+                try {cleanup();} finally {released.countDown();thread.quitSafely();}
+            });
+            if(Thread.currentThread()!=thread) {
+                try {released.await(2,TimeUnit.SECONDS);}
+                catch(InterruptedException e) {Thread.currentThread().interrupt();}
+            }
+        }
     }
 }
