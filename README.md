@@ -1,4 +1,31 @@
-# NURA LD36 Diagnostic v0.1
+# NURA LD36 Diagnostic v0.3.0
+
+Aplicativo Android para diagnóstico do LD36 via USB AOA sem root.
+
+## Modo passivo e modo ativo
+
+- **VARREDURA PASSIVA (60s):** registra RX sem enviar bytes.
+- **NEGOCIAR PROTOCOLO (60s):** responde apenas a mensagens recebidas de tipos documentados: ecoa heartbeat `00 00 00 00`, responde SYNC (25→28 bytes) e envia APP MSG_SYNC (30 bytes), responde STAR (32→48 bytes). Não envia comandos de reinicialização/firmware e não faz sondagem arbitrária.
+- Exportação **TXT**, **RX BIN** e **TX BIN** (para a mesma sessão).
+- O aplicativo não intercepta o Mirror original. Feche o Mirror original antes de testar.
+- **Não oferece espelhamento de tela nem áudio.** O STAR em modo ativo serve somente para validar o transporte/protocolo, sem iniciar MediaProjection nem MediaCodec.
+- A análise de pacotes é incremental, independente dos limites de `read()`. O modo ativo é experimental: os layouts foram documentados e testados em emulação TCP; a compatibilidade em USB real ainda precisa de validação.
+- A saída TX só é emitida ao reconhecer mensagens documentadas recebidas do dongle; se o LD36 continuar enviando apenas zeros, o único TX será o eco do heartbeat.
+
+## Instruções do teste
+
+1. Feche o Mirror original; conecte o LD36 ao HDMI da TV, à alimentação e ao telefone Android.
+2. Abra o NURA LD36 Diagnostic, autorize a conexão USB AOA.
+3. Execute **NEGOCIAR PROTOCOLO (60s)** e aguarde o encerramento.
+4. Exporte **TXT**, **BIN** (RX) e **TX**, mesmo que TX esteja vazio.
+5. Encaminhe os três arquivos para comparar a negociação e determinar o próximo passo.
+6. Se o LD36 desconectar, repita no modo passivo para comparação.
+
+Os recursos de análise ativos não autorizam mudanças de firmware. Todos os arquivos são salvos no armazenamento privado do app antes da exportação.
+
+---
+
+# Registro histórico: NURA LD36 Diagnostic v0.1
 
 Aplicativo Android **sem root** para investigar, com consentimento USB, o canal
 Android Open Accessory (AOA) do adaptador LD36/Mirror.
