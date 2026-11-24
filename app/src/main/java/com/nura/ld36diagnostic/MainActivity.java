@@ -131,7 +131,7 @@ public final class MainActivity extends Activity {
         } else {
             registerReceiver(usbEvents, filter);
         }
-        appendLog("NURA LD36 Diagnostic v0.7.0: reparo VirtualDisplay + Surface, modo anterior preservado.");
+        appendLog("NURA LD36 Diagnostic v0.8.0: giro manual UV e dimensoes diagnosticadas.");
         appendLog("Modo passivo: somente RX. Nenhum comando será enviado ao dongle.");
         appendLog("Feche o aplicativo Mirror original antes de conectar o LD36.");
         discoverAccessory();
@@ -183,7 +183,7 @@ public final class MainActivity extends Activity {
         TextView title = text("LD36 Diagnostic", 28, INK, Typeface.BOLD);
         title.setPadding(0, dp(7), 0, dp(5));
         root.addView(title);
-        TextView subtitle = text("VERSÃO 0.7.0 • TESTE DE ROTAÇÃO USB", 13, ACCENT, Typeface.BOLD);
+        TextView subtitle = text("VERSÃO 0.8.0 • ORIENTAÇÃO H.264", 13, ACCENT, Typeface.BOLD);
         root.addView(subtitle);
 
         LinearLayout statusCard = columnCard();
@@ -238,6 +238,22 @@ public final class MainActivity extends Activity {
         });
         addToRoot(root, fitPicker, 7);
         addToRoot(root, videoButton, 12);
+        Button rotateButton = button("↻ GIRAR IMAGEM DA TV 90°", PANEL, INK);
+        addToRoot(root, rotateButton, 8);
+        rotateButton.setOnClickListener(v -> {
+            if (!running.get() || !videoStarted || !fillTvSelected) {
+                appendLog("Giro 90: inicie antes o modo Rotacao experimental.");
+                return;
+            }
+            Intent rotate = new Intent(this, MirrorProjectionService.class);
+            rotate.setAction(MirrorProjectionService.ACTION_ROTATE);
+            try {
+                startService(rotate);
+                appendLog("Solicitado giro 90 na textura da TV, sem reiniciar USB.");
+            } catch (RuntimeException e) {
+                appendLog("Erro no ajuste de orientacao: "+e.getMessage());
+            }
+        });
         videoButton.setOnClickListener(v -> requestVideoConsent());
         scanButton.setOnClickListener(v -> discoverAccessory());
         connectButton.setOnClickListener(v -> connectWithPermission());
@@ -294,7 +310,7 @@ public final class MainActivity extends Activity {
         exportText.setOnClickListener(v -> requestExport(false));
         exportBin.setOnClickListener(v -> requestExport(true));
 
-        TextView note = text("v0.7: Original preserva o caminho da v0.4. Rotação experimental atualiza a superfície do Android ao girar sem recorte proposital. Se a TV continuar mostrando faixas ou imagem lateral, volte ao Original e exporte TXT. Áudio ainda indisponível.", 12, MUTED, Typeface.NORMAL);
+        TextView note = text("v0.8: o modo Original da v0.4 segue como padrão. O modo Rotação experimental usa a GPU; se a imagem ficar de lado, use GIRAR IMAGEM 90° (até ficar correta). A correção é manual para identificar exatamente a orientação necessária. Exporte TXT. Áudio indisponível.", 12, MUTED, Typeface.NORMAL);
         note.setPadding(0, dp(17), 0, 0);
         root.addView(note);
     }
