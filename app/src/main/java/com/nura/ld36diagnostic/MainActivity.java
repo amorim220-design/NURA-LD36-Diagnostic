@@ -468,6 +468,11 @@ public final class MainActivity extends Activity {
                 if (videoModeRequested) startVideoAfterStar(session, magic, width, height);
             }
         }) : null;
+        if (activeSession != null && videoModeRequested) {
+            android.util.DisplayMetrics metrics = getResources().getDisplayMetrics();
+            boolean portrait = metrics.heightPixels >= metrics.widthPixels;
+            activeSession.setVideoOutput(portrait ? 720 : 1280, portrait ? 1280 : 720);
+        }
         long bytes = 0;
         long reads = 0;
         boolean rawLimitLogged = false;
@@ -525,6 +530,7 @@ public final class MainActivity extends Activity {
             runOnUiThread(() -> {
                 if (session != generation) return;
                 running.set(false);
+                stopVideoService();
                 closeResources();
                 setStatus("Captura encerrada", WARNING);
                 connectButton.setEnabled(accessory != null);
