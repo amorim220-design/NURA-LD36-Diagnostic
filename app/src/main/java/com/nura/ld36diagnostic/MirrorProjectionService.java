@@ -42,6 +42,7 @@ public final class MirrorProjectionService extends Service {
     public static final String EXTRA_SOURCE_WIDTH = "source_width";
     public static final String EXTRA_SOURCE_HEIGHT = "source_height";
     public static final String EXTRA_CROP = "center_crop";
+    public static final String EXTRA_AUTO_ORIENTATION = "auto_orientation";
     private static final int NOTIFICATION_ID = 36;
     private static final String CHANNEL = "ld36_projection";
     private final AtomicBoolean capturing = new AtomicBoolean(false);
@@ -50,6 +51,7 @@ public final class MirrorProjectionService extends Service {
     private Surface inputSurface;
     private VirtualDisplay display;
     private ScreenCropRenderer cropRenderer;
+    private volatile int projectionDpi = 320;
     private Thread worker;
     private final Handler handler = new Handler(Looper.getMainLooper());
 
@@ -85,6 +87,9 @@ public final class MirrorProjectionService extends Service {
             projection = manager.getMediaProjection(result, consent);
             if (projection == null) throw new IOException("Android recusou MediaProjection");
             projection.registerCallback(new MediaProjection.Callback() {
+                @Override public void onCapturedContentResize(int width, int height) {
+                    handler.post(() -> handleCapturedResize(width,height));
+                }
                 @Override public void onStop() {
                     note("Captura revogada pelo Android.");
                     stopAll();
@@ -94,6 +99,7 @@ public final class MirrorProjectionService extends Service {
             int width = Math.max(320, Math.min(1920, intent.getIntExtra(EXTRA_WIDTH, 720)));
             int height = Math.max(320, Math.min(1920, intent.getIntExtra(EXTRA_HEIGHT, 1280)));
             int dpi = Math.max(120, intent.getIntExtra(EXTRA_DPI, 320));
+            projectionDpi = dpi;
             // Align to 16, which avoids several hardware encoder issues.
             width = (width + 15) & ~15;
             height = (height + 15) & ~15;
@@ -107,18 +113,21 @@ public final class MirrorProjectionService extends Service {
             inputSurface = codec.createInputSurface();
             codec.start();
             boolean crop = intent.getBooleanExtra(EXTRA_CROP, false);
+            boolean autoOrientation = intent.getBooleanExtra(EXTRA_AUTO_ORIENTATION, false);
             int sourceWidth = intent.getIntExtra(EXTRA_SOURCE_WIDTH, width);
             int sourceHeight = intent.getIntExtra(EXTRA_SOURCE_HEIGHT, height);
-            if (crop && sourceWidth >= 320 && sourceHeight >= 320 &&
+            if ((crop || autoOrientation) && sourceWidth >= 320 && sourceHeight >= 320 &&
                     sourceWidth <= 4096 && sourceHeight <= 4096) {
                 // Encoder stays 1280x720; display captures at native screen size.
                 // GPU performs proportional center crop, preserving pixel geometry.
-                cropRenderer = new ScreenCropRenderer(inputSurface, sourceWidth, sourceHeight, width, height);
+                cropRenderer = new ScreenCropRenderer(inputSurface, sourceWidth, sourceHeight,
+                    width, height, crop);
                 display = projection.createVirtualDisplay("NURA-LD36", sourceWidth, sourceHeight, dpi,
                     DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
                     cropRenderer.getCaptureSurface(), null, handler);
-                note("Preencher TV: recorte central proporcional " + sourceWidth + "x" + sourceHeight
-                    + " -> " + width + "x" + height + " (sem esticar).");
+                note((crop ? "Preencher TV" : "Orientacao automatica")
+                    + ": captura " + sourceWidth + "x" + sourceHeight
+                    + " -> saida HDMI " + width + "x" + height + " (sem esticar).");
             } else {
                 display = projection.createVirtualDisplay("NURA-LD36", width, height, dpi,
                     DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, inputSurface, null, handler);
@@ -134,6 +143,28 @@ public final class MirrorProjectionService extends Service {
             stopSelf();
         }
         return START_NOT_STICKY;
+    }
+
+    /** Update the *same* virtual display after screen rotation.
+     * Do not call MediaProjection.createVirtualDisplay again (Android 14+ token rules).
+     */
+    private void handleCapturedResize(int width,int height) {
+        if(width < 240 || height < 240 || width > 4096 || height > 4096) return;
+        ScreenCropRenderer renderer = cropRenderer;
+        VirtualDisplay virtual = display;
+        if(renderer != null && virtual != null) {
+            try {
+                renderer.updateSourceSize(width,height);
+                virtual.resize(width,height,projectionDpi);
+                note("Orientacao alterada: captura " + width + "x" + height
+                    + " atualizada sem interromper H264.");
+            } catch(Exception e) {
+                note("Falha ao adaptar orientacao: " + e.getMessage());
+            }
+        } else if(virtual != null) {
+            note("Tela girou para " + width + "x" + height
+                + ". Modo Original nao adapta; reinicie o teste ou selecione Auto.");
+        }
     }
 
     private void foreground() {
