@@ -1,3 +1,20 @@
+# NURA LD36 v0.6.0 — correcao de rotacao, sem cortes
+
+**Problema no teste físico da v0.5:** em modo Preencher TV a imagem ficou cortada. Ao abrir um jogo e girar o celular, apenas uma parte da tela aparecia na TV.
+
+**Correção experimental:** o modo Automático substitui o recorte por **aspect-fit**: toda a imagem é mostrada sem distorcer e barras são permitidas quando necessário. A captura permanece viva durante eventos de mudança de orientação, e a resolução do virtual display e do SurfaceTexture são atualizadas quando o Android reporta novo tamanho. O encoder H.264 continua em **1280×720** (paisagem) para evitar reiniciar a negociação do LD36 a cada rotação. O serviço permanece com a permissão explícita MediaProjection.
+
+### Teste solicitado
+1. Abra o NURA LD36, escolha **Automático (recomendado)** e inicie a captura USB.
+2. Verifique a tela inicial e abra um jogo **na horizontal**. Alterne para vertical e horizontal sem fechar a captura.
+3. Verifique se a TV mostra **a tela inteira**, mesmo que sejam necessárias barras pretas para preservar a proporção.
+4. Exporte o TXT (especialmente as linhas "Orientacao alterada" e possíveis erros); informe se o aplicativo voltou a mostrar o quadro inteiro.
+5. Se apresentar problema, selecione **Original (v0.4)** e inicie nova sessão. O modo Original preserva o caminho direto anterior.
+
+**Não há áudio**, a rotação dinâmica depende do comportamento do MediaProjection/VirtualDisplay no Android do telefone e só pode ser confirmada com novo teste físico. Não declarar que a rotação funciona antes do teste.
+
+---
+
 # NURA LD36 v0.5 — ajuste de preenchimento sem distorção
 
 Depois de o usuário comprovar que o vídeo H.264 apareceu corretamente na TV com **pequenas bordas superior e inferior no modo horizontal**, a v0.5 preserva o modo Original da v0.4 e acrescenta um modo experimental de **Preencher TV sem esticar**.
