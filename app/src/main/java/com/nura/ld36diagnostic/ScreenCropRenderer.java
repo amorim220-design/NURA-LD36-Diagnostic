@@ -37,6 +37,7 @@ public final class ScreenCropRenderer implements AutoCloseable {
     private volatile int displayWidth,displayHeight;
     private volatile int correctionDegrees;
     private volatile boolean matrixLogged;
+    private volatile String matrixDiagnostic = "matriz ainda nao recebida";
     private java.nio.FloatBuffer uv;
     private final Surface encoderSurface;
     private final int sourceWidth, sourceHeight, encodedWidth, encodedHeight;
@@ -126,6 +127,7 @@ public final class ScreenCropRenderer implements AutoCloseable {
     }
 
     public int getCorrectionDegrees() { return correctionDegrees; }
+    public String getMatrixDiagnostic() { return matrixDiagnostic; }
 
     private void updateGeometry(int width,int height) {
         float[] points=RotationGeometry.quad(width,height,encodedWidth,encodedHeight,correctionDegrees);
@@ -213,11 +215,12 @@ public final class ScreenCropRenderer implements AutoCloseable {
             sourceTexture.getTransformMatrix(textureMatrix);
             if (!matrixLogged) {
                 matrixLogged = true;
-                android.util.Log.i("NURA-LD36","SurfaceTexture matrix rotation="+correctionDegrees+
+                matrixDiagnostic = "SurfaceTexture UV rot="+correctionDegrees+
                     " src="+displayWidth+"x"+displayHeight+
-                    " m0="+textureMatrix[0]+" m1="+textureMatrix[1]+
-                    " m4="+textureMatrix[4]+" m5="+textureMatrix[5]+
-                    " m12="+textureMatrix[12]+" m13="+textureMatrix[13]);
+                    " mat=["+textureMatrix[0]+","+textureMatrix[1]+","+
+                    textureMatrix[4]+","+textureMatrix[5]+","+
+                    textureMatrix[12]+","+textureMatrix[13]+"]";
+                android.util.Log.i("NURA-LD36",matrixDiagnostic);
             }
             GLES20.glClearColor(0f,0f,0f,1f);GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
             GLES20.glUseProgram(program);
