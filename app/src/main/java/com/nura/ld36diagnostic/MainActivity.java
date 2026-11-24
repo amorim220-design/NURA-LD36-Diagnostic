@@ -70,6 +70,7 @@ public final class MainActivity extends Activity {
     private volatile boolean videoModeRequested;
     private boolean fillTvSelected;
     private boolean directTvSelected;
+    private boolean autoOriginalSelected;
     private volatile boolean videoStarted;
     private volatile int videoMagic;
     private Intent projectionConsent;
@@ -132,7 +133,7 @@ public final class MainActivity extends Activity {
         } else {
             registerReceiver(usbEvents, filter);
         }
-        appendLog("NURA LD36 Diagnostic v1.0.0: capturador TV direto, sem GPU secundaria.");
+        appendLog("NURA LD36 Diagnostic v1.1.0: AUTO ORIGINAL (encoder gira junto ao Android).");
         appendLog("Modo passivo: somente RX. Nenhum comando será enviado ao dongle.");
         appendLog("Feche o aplicativo Mirror original antes de conectar o LD36.");
         discoverAccessory();
@@ -186,7 +187,7 @@ public final class MainActivity extends Activity {
         TextView title = text("LD36 Diagnostic", 28, INK, Typeface.BOLD);
         title.setPadding(0, dp(7), 0, dp(5));
         root.addView(title);
-        TextView subtitle = text("VERSÃO 1.0.0 • CAPTURA TV DIRETA", 13, ACCENT, Typeface.BOLD);
+        TextView subtitle = text("VERSÃO 1.1.0 • ROTAÇÃO NATIVA EXPERIMENTAL", 13, ACCENT, Typeface.BOLD);
         root.addView(subtitle);
 
         LinearLayout statusCard = columnCard();
@@ -219,7 +220,8 @@ public final class MainActivity extends Activity {
         String[] fitting = {
             "Original v0.4 — captura direta antiga",
             "GPU v0.9 — diagnóstico manual (distorção conhecida)",
-            "TV DIRETO v1.0 — Android compõe imagem (teste)"
+            "TV DIRETO v1.0 — sem imagem (diagnóstico)",
+            "AUTO ORIGINAL v1.1 — encoder segue giro (teste)"
         };
         ArrayAdapter<String> fitAdapter = new ArrayAdapter<>(this,
             android.R.layout.simple_spinner_item, fitting);
@@ -227,22 +229,27 @@ public final class MainActivity extends Activity {
         fitPicker.setAdapter(fitAdapter);
         fitPicker.setBackgroundColor(PANEL);
         // New mode is opt-in: known-working Original remains safe initial selection.
-        int mode = getPreferences(MODE_PRIVATE).getInt("capture_mode_v10", 0);
-        if (mode < 0 || mode > 2) mode = 0;
+        int mode = getPreferences(MODE_PRIVATE).getInt("capture_mode_v11", 0);
+        if (mode < 0 || mode > 3) mode = 0;
         fillTvSelected = mode == 1;
         directTvSelected = mode == 2;
+        autoOriginalSelected = mode == 3;
         fitPicker.setSelection(mode);
         fitPicker.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                 boolean gpu = position == 1;
                 boolean direct = position == 2;
-                boolean changed = fillTvSelected != gpu || directTvSelected != direct;
+                boolean auto = position == 3;
+                boolean changed = fillTvSelected != gpu ||
+                    directTvSelected != direct || autoOriginalSelected != auto;
                 fillTvSelected = gpu;
                 directTvSelected = direct;
-                getPreferences(MODE_PRIVATE).edit().putInt("capture_mode_v10", position).apply();
+                autoOriginalSelected = auto;
+                getPreferences(MODE_PRIVATE).edit().putInt("capture_mode_v11", position).apply();
                 if (changed) appendLog("Captura selecionada: " +
-                    (direct ? "TV DIRETO sem OpenGL" :
-                        (gpu ? "GPU experimental anterior" : "Original v0.4")) +
+                    (auto ? "AUTO ORIGINAL v1.1 (SPS/PPS muda ao girar)" :
+                        (direct ? "TV DIRETO v1.0 (sem imagem no teste)" :
+                            (gpu ? "GPU experimental anterior" : "Original v0.4"))) +
                     ". Valido apenas na proxima sessao.");
             }
             @Override public void onNothingSelected(AdapterView<?> parent) { }
@@ -337,7 +344,7 @@ public final class MainActivity extends Activity {
         exportText.setOnClickListener(v -> requestExport(false));
         exportBin.setOnClickListener(v -> requestExport(true));
 
-        TextView note = text("v1.0: NOVO TV DIRETO usa o compositor nativo do Android, sem a segunda transformação OpenGL que deformava a imagem. Inicie este modo, observe proporção no vertical e horizontal, exporte TXT. Original v0.4 preservado. Botões de giro só são válidos no modo GPU anterior. Áudio indisponível.", 12, MUTED, Typeface.NORMAL);
+        TextView note = text("v1.1: AUTO ORIGINAL inicia com o motor v0.4 comprovado. Quando a tela gira, tenta substituir a Surface do MediaCodec e enviar novos SPS/PPS (720x1280 ↔ 1280x720). O LD36 pode nao aceitar resolucao dinamica: tela preta apos giro e um resultado util do teste. Exporte TXT. Original v0.4 preservado e recomendado para uso normal. Botoes Girar 90 sao apenas do GPU. Audio indisponivel.", 12, MUTED, Typeface.NORMAL);
         note.setPadding(0, dp(17), 0, 0);
         root.addView(note);
     }
@@ -439,10 +446,12 @@ public final class MainActivity extends Activity {
                 intent.putExtra(MirrorProjectionService.EXTRA_SOURCE_HEIGHT, actualH);
                 intent.putExtra(MirrorProjectionService.EXTRA_CROP, fillTvSelected);
                 intent.putExtra(MirrorProjectionService.EXTRA_DIRECT_TV, directTvSelected);
+                intent.putExtra(MirrorProjectionService.EXTRA_AUTO_ORIGINAL, autoOriginalSelected);
                 appendLog("Tela real: " + actualW + "x" + actualH + " -> encoder "
                     + encoderW + "x" + encoderH
-                    + (directTvSelected ? " | TV DIRETO ANDROID SEM OPENGL" :
-                        (fillTvSelected ? " | GPU ANTIGA" : " | ORIGINAL v0.4")));
+                    + (autoOriginalSelected ? " | AUTO ORIGINAL v1.1 - CODIFICADOR DINAMICO" :
+                        (directTvSelected ? " | TV DIRETO v1.0 (experimental falhou)" :
+                            (fillTvSelected ? " | GPU ANTIGA" : " | ORIGINAL v0.4"))));
                 projectionConsent = null; // MediaProjection consent token must be used once.
                 if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent);
                 else startService(intent);

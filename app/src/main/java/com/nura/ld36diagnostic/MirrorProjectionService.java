@@ -49,6 +49,7 @@ public final class MirrorProjectionService extends Service {
     public static final String EXTRA_CROP = "center_crop";
     /** Single native Android projection scaling into the TV resolution. No secondary GL. */
     public static final String EXTRA_DIRECT_TV = "direct_tv";
+    public static final String EXTRA_AUTO_ORIGINAL = "auto_original";
     private static final int NOTIFICATION_ID = 36;
     private static final String CHANNEL = "ld36_projection";
     private final AtomicBoolean capturing = new AtomicBoolean(false);
@@ -66,6 +67,12 @@ public final class MirrorProjectionService extends Service {
     private volatile int successfulRebinds;
     private volatile int failedRebinds;
     private volatile boolean directTvMode;
+    private volatile boolean autoOriginalMode;
+    private volatile boolean switchingEncoder;
+    private volatile boolean switchingInProgress;
+    private volatile int encoderWidth, encoderHeight;
+    private volatile int orientationEvents;
+    private volatile int codecSwitches;
     private Thread worker;
     private final Handler handler = new Handler(Looper.getMainLooper());
 
@@ -143,9 +150,10 @@ public final class MirrorProjectionService extends Service {
                     // For TV-direct the codec Surface is fixed 1280x720. Keep
                     // Android's own compositing: resizing from this callback
                     // would break the TV aspect ratio.
-                    if (directTvMode) {
-                        note("TV DIRETO CONTEUDO: "+width+"x"+height+
-                            " -> surface codificador fixa 1280x720.");
+                    if (directTvMode || autoOriginalMode) {
+                        note((directTvMode ? "TV DIRETO CONTEUDO: " : "AUTO ORIGINAL CONTEUDO: ")+
+                            width+"x"+height+
+                            " encoder="+encoderWidth+"x"+encoderHeight);
                     } else {
                         updateCaptureDimensions(width,height,"MediaProjection");
                     }
@@ -173,6 +181,10 @@ public final class MirrorProjectionService extends Service {
             codec.start();
             boolean crop = intent.getBooleanExtra(EXTRA_CROP, false);
             directTvMode = intent.getBooleanExtra(EXTRA_DIRECT_TV, false);
+            autoOriginalMode = intent.getBooleanExtra(EXTRA_AUTO_ORIGINAL, false);
+            encoderWidth=width; encoderHeight=height;
+            switchingEncoder=false;switchingInProgress=false;
+            codecSwitches=0;orientationEvents=0;
             dpiValue=dpi;
             int sourceWidth = intent.getIntExtra(EXTRA_SOURCE_WIDTH, width);
             int sourceHeight = intent.getIntExtra(EXTRA_SOURCE_HEIGHT, height);
@@ -223,12 +235,32 @@ public final class MirrorProjectionService extends Service {
             } else {
                 display = projection.createVirtualDisplay("NURA-LD36", width, height, dpi,
                     DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, inputSurface, null, handler);
-                note("Modo Original 0.4: captura direta preservada.");
+                if (autoOriginalMode) {
+                    lastCaptureWidth=sourceWidth;lastCaptureHeight=sourceHeight;
+                    displayManager=(DisplayManager)getSystemService(DISPLAY_SERVICE);
+                    orientationListener=new DisplayManager.DisplayListener() {
+                        @Override public void onDisplayAdded(int id) { }
+                        @Override public void onDisplayRemoved(int id) { }
+                        @Override public void onDisplayChanged(int id) {
+                            if (id==Display.DEFAULT_DISPLAY)
+                                refreshScreenDimensions("display listener");
+                        }
+                    };
+                    if(displayManager!=null)
+                        displayManager.registerDisplayListener(orientationListener,handler);
+                    note("AUTO ORIGINAL v1.1: captura DIRETA v0.4 inicial em " +
+                        width+"x"+height+"; nova orientacao tentara trocar codec SPS/PPS.");
+                } else {
+                    note("Modo Original 0.4: captura direta preservada.");
+                }
             }
             capturing.set(true);
             note("Captura H264 iniciada " + width + "x" + height + " 30fps; enviando VDAT.");
             if (directTvMode) {
                 handler.postDelayed(() -> refreshScreenDimensions("verificacao inicial TV direto"), 1400);
+            }
+            if (autoOriginalMode) {
+                handler.postDelayed(() -> refreshScreenDimensions("verificacao inicial AUTO ORIGINAL"), 1400);
             }
             if (cropRenderer != null) {
                 note("Orientacao v0.8: UV manual=0, SurfaceTexture matriz preservada; " +
@@ -277,6 +309,20 @@ public final class MirrorProjectionService extends Service {
             if (!capturing.get() || display == null) return;
             if(width < 240 || height < 240 || width > 4096 || height > 4096)return;
             if(width == lastCaptureWidth && height == lastCaptureHeight)return;
+            if (autoOriginalMode) {
+                int oldW=lastCaptureWidth, oldH=lastCaptureHeight;
+                lastCaptureWidth=width; lastCaptureHeight=height;
+                orientationEvents++;
+                note("AUTO ORIGINAL EVENTO #"+orientationEvents+" "+reason+
+                    " fonte "+oldW+"x"+oldH+" -> "+width+"x"+height+
+                    " codec="+encoderWidth+"x"+encoderHeight);
+                int desiredW=width>=height ? 1280 : 720;
+                int desiredH=width>=height ? 720 : 1280;
+                if(desiredW!=encoderWidth || desiredH!=encoderHeight)
+                    switchOriginalCodec(desiredW,desiredH);
+                else requestKeyframe();
+                return;
+            }
             if (directTvMode) {
                 int oldW=lastCaptureWidth, oldH=lastCaptureHeight;
                 lastCaptureWidth=width; lastCaptureHeight=height;
@@ -329,6 +375,102 @@ public final class MirrorProjectionService extends Service {
         });
     }
 
+    /**
+     * Opt-in experiment: replace only the MediaCodec input Surface of the
+     * existing VirtualDisplay. Reusing the MediaProjection token to create
+     * another VirtualDisplay can fail on recent Android releases.
+     *
+     * No STAR renegotiation is proven. A TV black screen after SPS/PPS change
+     * is diagnostic of receiver compatibility, not evidence that Android
+     * failed to produce frames.
+     */
+    private void switchOriginalCodec(int newW,int newH) {
+        if (switchingInProgress || !capturing.get()) return;
+        switchingInProgress=true;
+        switchingEncoder=true; // let the old encoder drain loop exit before stop()
+        final MediaCodec previous=codec;
+        final Surface previousSurface=inputSurface;
+        final VirtualDisplay vd=display;
+        final Thread previousWorker=worker;
+        final int previousW=encoderWidth,previousH=encoderHeight;
+        note("AUTO ORIGINAL TROCA: preparando "+previousW+"x"+previousH+
+            " -> "+newW+"x"+newH+
+            "; LD36 ainda nao confirmou suporte a SPS/PPS dinamico.");
+        new Thread(() -> {
+            MediaCodec next=null;
+            Surface nextSurface=null;
+            boolean transferred=false;
+            try {
+                if (previousWorker!=null) {
+                    previousWorker.join(2000);
+                    if(previousWorker.isAlive())
+                        throw new IllegalStateException("timeout aguardando encoder anterior");
+                }
+                if(!capturing.get() || vd==null)
+                    throw new IllegalStateException("captura foi encerrada");
+                MediaFormat format=MediaFormat.createVideoFormat("video/avc",newW,newH);
+                format.setInteger(MediaFormat.KEY_COLOR_FORMAT,
+                    MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
+                format.setInteger(MediaFormat.KEY_BIT_RATE,4000000);
+                format.setInteger(MediaFormat.KEY_FRAME_RATE,30);
+                format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL,1);
+                next=MediaCodec.createEncoderByType("video/avc");
+                next.configure(format,null,null,MediaCodec.CONFIGURE_FLAG_ENCODE);
+                nextSurface=next.createInputSurface();
+                next.start();
+                if(!capturing.get())throw new IllegalStateException("captura encerrada");
+                vd.setSurface(null);
+                vd.resize(newW,newH,dpiValue);
+                vd.setSurface(nextSurface);
+                transferred=true;
+                codec=next;
+                inputSurface=nextSurface;
+                encoderWidth=newW; encoderHeight=newH;
+                codecSwitches++;
+                // Starting fresh encodeLoop will resend new codec SPS/PPS/IDR.
+                switchingEncoder=false;
+                worker=new Thread(this::encodeLoop,"nura-h264-auto-"+codecSwitches);
+                worker.start();
+                note("AUTO ORIGINAL TROCA OK #"+codecSwitches+" codec="+newW+
+                    "x"+newH+"; SPS/PPS+IDR novo enviado ao LD36 na sequencia.");
+                if(previous!=null) {
+                    try{previous.stop();}catch(Exception ignored){}
+                    try{previous.release();}catch(Exception ignored){}
+                }
+                if(previousSurface!=null)previousSurface.release();
+            } catch(Exception e) {
+                note("AUTO ORIGINAL TROCA FALHOU: "+e.getMessage());
+                if (transferred) {
+                    note("AUTO ORIGINAL: Surface nova ja anexada; encerre e reinicie captura.");
+                    handler.post(this::stopAll);
+                } else {
+                    try {
+                        if(capturing.get() && vd!=null && previousSurface!=null) {
+                            vd.resize(previousW,previousH,dpiValue);
+                            vd.setSurface(previousSurface);
+                            codec=previous;
+                            inputSurface=previousSurface;
+                            switchingEncoder=false;
+                            worker=new Thread(this::encodeLoop,"nura-h264-auto-recovery");
+                            worker.start();
+                            note("AUTO ORIGINAL: restaurado codec anterior.");
+                        }
+                    }catch(Exception recovery) {
+                        note("AUTO ORIGINAL RECUPERACAO FALHOU: "+recovery.getMessage());
+                        handler.post(this::stopAll);
+                    }
+                }
+                if(next!=null && !transferred) {
+                    try{next.stop();}catch(Exception ignored){}
+                    try{next.release();}catch(Exception ignored){}
+                }
+                if(nextSurface!=null && !transferred)nextSurface.release();
+            } finally {
+                switchingInProgress=false;
+            }
+        },"nura-switch-original-codec").start();
+    }
+
     private void foreground() {
         NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
         if (Build.VERSION.SDK_INT >= 26) {
@@ -353,7 +495,7 @@ public final class MirrorProjectionService extends Service {
         byte[] lastConfig = null;
         int frames = 0;
         try {
-            while (capturing.get()) {
+            while (capturing.get() && !switchingEncoder) {
                 MediaCodec c = codec;
                 if (c == null) break;
                 int index = c.dequeueOutputBuffer(info, 100000);
@@ -391,10 +533,14 @@ public final class MirrorProjectionService extends Service {
         } catch (Exception ex) {
             if (capturing.get()) note("Erro de codificacao/envio VDAT: " + ex.getMessage());
         } finally {
-            handler.post(() -> {
-                stopAll();
-                stopSelf();
-            });
+            if (!switchingEncoder) {
+                handler.post(() -> {
+                    if (capturing.get()) {
+                        stopAll();
+                        stopSelf();
+                    }
+                });
+            }
         }
     }
 
@@ -426,7 +572,8 @@ public final class MirrorProjectionService extends Service {
 
     private synchronized void stopAll() {
         capturing.set(false);
-        note("Rebinds: sucesso=" + successfulRebinds + ", falhas=" + failedRebinds);
+        note("Rebinds: sucesso=" + successfulRebinds + ", falhas=" + failedRebinds+
+            " | AUTO ORIGINAL mudancas="+codecSwitches+" eventos="+orientationEvents);
         if(displayManager!=null && orientationListener!=null) {
             try {displayManager.unregisterDisplayListener(orientationListener);}
             catch(Exception ignored) { }
