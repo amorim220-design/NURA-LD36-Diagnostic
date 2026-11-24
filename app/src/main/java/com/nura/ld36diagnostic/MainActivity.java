@@ -131,7 +131,7 @@ public final class MainActivity extends Activity {
         } else {
             registerReceiver(usbEvents, filter);
         }
-        appendLog("NURA LD36 Diagnostic v0.8.0: giro manual UV e dimensoes diagnosticadas.");
+        appendLog("NURA LD36 Diagnostic v0.9.0: proporcao preservada e giro anterior zerado na rotacao.");
         appendLog("Modo passivo: somente RX. Nenhum comando será enviado ao dongle.");
         appendLog("Feche o aplicativo Mirror original antes de conectar o LD36.");
         discoverAccessory();
@@ -183,7 +183,7 @@ public final class MainActivity extends Activity {
         TextView title = text("LD36 Diagnostic", 28, INK, Typeface.BOLD);
         title.setPadding(0, dp(7), 0, dp(5));
         root.addView(title);
-        TextView subtitle = text("VERSÃO 0.8.0 • ORIENTAÇÃO H.264", 13, ACCENT, Typeface.BOLD);
+        TextView subtitle = text("VERSÃO 0.9.0 • PROPORÇÃO / ORIENTAÇÃO", 13, ACCENT, Typeface.BOLD);
         root.addView(subtitle);
 
         LinearLayout statusCard = columnCard();
@@ -240,6 +240,22 @@ public final class MainActivity extends Activity {
         addToRoot(root, videoButton, 12);
         Button rotateButton = button("↻ GIRAR IMAGEM DA TV 90°", PANEL, INK);
         addToRoot(root, rotateButton, 8);
+        Button resetGeometryButton = button("REDEFINIR PROPORÇÃO / GIRO 0°", PANEL, INK);
+        addToRoot(root, resetGeometryButton, 8);
+        resetGeometryButton.setOnClickListener(v -> {
+            if (!running.get() || !videoStarted || !fillTvSelected) {
+                appendLog("Redefinir: inicie antes o modo Rotacao experimental.");
+                return;
+            }
+            Intent reset = new Intent(this, MirrorProjectionService.class);
+            reset.setAction(MirrorProjectionService.ACTION_RESET);
+            try {
+                startService(reset);
+                appendLog("Solicitado RESET de proporcao e giro manual.");
+            } catch (RuntimeException e) {
+                appendLog("Erro ao redefinir geometria: " + e.getMessage());
+            }
+        });
         rotateButton.setOnClickListener(v -> {
             if (!running.get() || !videoStarted || !fillTvSelected) {
                 appendLog("Giro 90: inicie antes o modo Rotacao experimental.");
@@ -310,7 +326,7 @@ public final class MainActivity extends Activity {
         exportText.setOnClickListener(v -> requestExport(false));
         exportBin.setOnClickListener(v -> requestExport(true));
 
-        TextView note = text("v0.8: o modo Original da v0.4 segue como padrão. O modo Rotação experimental usa a GPU; se a imagem ficar de lado, use GIRAR IMAGEM 90° (até ficar correta). A correção é manual para identificar exatamente a orientação necessária. Exporte TXT. Áudio indisponível.", 12, MUTED, Typeface.NORMAL);
+        TextView note = text("v0.9: a proporção é recalculada para a orientação real da captura. Ao girar fisicamente o celular, o giro manual antigo volta a 0° para evitar dupla rotação. Use GIRAR 90° apenas se ficar de lado. O botão REDEFINIR restaura 0°. Exporte TXT. Original da v0.4 continua disponível.", 12, MUTED, Typeface.NORMAL);
         note.setPadding(0, dp(17), 0, 0);
         root.addView(note);
     }
