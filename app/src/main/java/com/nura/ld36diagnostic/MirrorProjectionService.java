@@ -38,6 +38,7 @@ public final class MirrorProjectionService extends Service {
     public static final String ACTION_STOP = "com.nura.ld36diagnostic.STOP_VIDEO";
     public static final String ACTION_REFRESH = "com.nura.ld36diagnostic.REFRESH_DISPLAY";
     public static final String ACTION_ROTATE = "com.nura.ld36diagnostic.ROTATE_OUTPUT";
+    public static final String ACTION_RESET = "com.nura.ld36diagnostic.RESET_OUTPUT_GEOMETRY";
     public static final String EXTRA_RESULT = "result";
     public static final String EXTRA_DATA = "data";
     public static final String EXTRA_WIDTH = "width";
@@ -82,6 +83,19 @@ public final class MirrorProjectionService extends Service {
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent == null) { stopSelf(); return START_NOT_STICKY; }
+        if (ACTION_RESET.equals(intent.getAction())) {
+            correctionDegrees=0;
+            if (capturing.get() && cropRenderer != null) {
+                cropRenderer.setCorrectionDegrees(0);
+                note("GEOMETRY RESET: orientacao manual=0; aguarde quadro novo.");
+                requestKeyframe();
+                handler.postDelayed(() -> {
+                    if (cropRenderer != null && capturing.get())
+                        note("GPU RESET CONFIRMADO: " + cropRenderer.getMatrixDiagnostic());
+                }, 350);
+            }
+            return START_NOT_STICKY;
+        }
         if (ACTION_ROTATE.equals(intent.getAction())) {
             if (capturing.get() && cropRenderer != null) {
                 correctionDegrees = (correctionDegrees + 90) % 360;
@@ -240,6 +254,8 @@ public final class MirrorProjectionService extends Service {
                 lastCaptureWidth = width;
                 lastCaptureHeight = height;
                 successfulRebinds++;
+                correctionDegrees=0;
+                note("RESET EM ROTACAO FISICA: orientacao manual=0; quadrante preservado.");
                 note("REBOUND #" + successfulRebinds + " " + reason + ": "
                     + oldW + "x" + oldH + " -> " + width + "x" + height
                     + " surface=reattach ok; encoder=1280x720.");
