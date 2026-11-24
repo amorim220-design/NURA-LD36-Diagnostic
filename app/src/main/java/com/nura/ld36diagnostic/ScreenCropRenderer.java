@@ -38,6 +38,7 @@ public final class ScreenCropRenderer implements AutoCloseable {
     private volatile int correctionDegrees;
     private volatile boolean matrixLogged;
     private volatile String matrixDiagnostic = "matriz ainda nao recebida";
+    private volatile String geometryDiagnostic = "geometria ainda nao calculada";
     private java.nio.FloatBuffer uv;
     private final Surface encoderSurface;
     private final int sourceWidth, sourceHeight, encodedWidth, encodedHeight;
@@ -94,10 +95,13 @@ public final class ScreenCropRenderer implements AutoCloseable {
             try {
                 if (closed || sourceTexture == null) return;
                 sourceTexture.setDefaultBufferSize(width, height);
-                updateGeometry(width,height);
-                matrixLogged = false;
+                // A prior manual correction applies to the previous screen
+                // orientation; do not carry it into a newly rotated buffer.
+                correctionDegrees=0;
                 displayWidth = width;
                 displayHeight = height;
+                updateGeometry(width,height);
+                matrixLogged = false;
                 updated.set(true);
             } finally {
                 ready.countDown();
@@ -120,6 +124,7 @@ public final class ScreenCropRenderer implements AutoCloseable {
             if (closed || sourceTexture == null) return;
             correctionDegrees=normalized;
             updateGeometry(displayWidth,displayHeight);
+            matrixLogged=false;
             android.util.Log.i("NURA-LD36","UV correction="+normalized+
                 " source="+displayWidth+"x"+displayHeight+
                 " output="+encodedWidth+"x"+encodedHeight);
@@ -127,10 +132,19 @@ public final class ScreenCropRenderer implements AutoCloseable {
     }
 
     public int getCorrectionDegrees() { return correctionDegrees; }
-    public String getMatrixDiagnostic() { return matrixDiagnostic; }
+    public String getMatrixDiagnostic() {
+        return geometryDiagnostic + " | " + matrixDiagnostic;
+    }
 
     private void updateGeometry(int width,int height) {
         float[] points=RotationGeometry.quad(width,height,encodedWidth,encodedHeight,correctionDegrees);
+        int fittedW = correctionDegrees % 180 == 0 ? width : height;
+        int fittedH = correctionDegrees % 180 == 0 ? height : width;
+        geometryDiagnostic = "GEOMETRY realGPU="+correctionDegrees+
+            " src="+width+"x"+height+" oriented="+fittedW+"x"+fittedH+
+            " encoder="+encodedWidth+"x"+encodedHeight+
+            " quad="+points[2]+"x"+points[5]+
+            " aspect="+String.format(java.util.Locale.US,"%.4f",(double)fittedW/fittedH);
         pos.clear();
         pos.put(points);
         pos.position(0);

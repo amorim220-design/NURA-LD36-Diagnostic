@@ -1,3 +1,25 @@
+# NURA LD36 v0.9 — correção experimental do aspecto / rotação
+
+Fotos do teste v0.8 mostraram dois casos: conteúdo achatado em uma faixa horizontal, e conteúdo maior porém deformado. A v0.8 também acumulava correções UV de 90/180/270 graus ao receber uma nova orientação física do Android.
+
+## Escopo das mudanças
+
+- Ao mudar a dimensão real da captura (por exemplo 1080x2400 para 2400x1080), zera automaticamente a rotação UV manual anterior (0 graus) antes de recalcular a geometria aspect-fit. Impede dupla rotação ao mudar o celular de orientação.
+- Gira a textura apenas quando o usuário solicitar. O modo experimental calcula largura/altura da imagem **já orientada** e ajusta dentro do encoder 1280x720 sem recorte, conservando a proporção de pixels declarada pela fonte.
+- Botão REDEFINIR PROPORÇÃO / GIRO 0° recupera geometria inicial. Para evitar falsa confirmação de alterações, diagnóstico GPU registra separadamente realGPU, dimensões fonte, dimensões orientadas, proporção e coordenadas do quad.
+- O modo Original (v0.4) continua selecionado por padrão; transporte AOA, SYNC/STAR e H.264 não foram alterados. Áudio não implementado.
+
+## Validação física pendente
+
+1. Comece com telefone vertical, Rotação experimental. Observe o vídeo na TV.
+2. Se ficar de lado, use GIRAR 90° até a orientação ficar correta e confira proporção visual.
+3. Gire o telefone para horizontal com a captura ativa. A correção manual volta a 0°. Teste com um jogo horizontal.
+4. Se imagem desproporcional, use REDEFINIR 0° e compare. Não tente compensar proporção errada com uma rotação arbitrária.
+5. Exporte TXT e procure GEOMETRY, GPU APOS AJUSTE, GPU APOS REBOUND, RESET EM ROTACAO FISICA.
+6. Fotos com elementos circulares (ícone, relógio) ajudam a detectar distorção. Não considerar correção validada sem teste real na TV.
+
+---
+
 # NURA LD36 v0.8.0 — diagnóstico da orientação por rotação de textura
 
 Base factual: no relatório real de 23:01:29, o Android abriu a sessão com captura 1080x2400, encoder 1280x720; registrou REBOUND #1 ao mudar para 2400x1080 às 23:01:43 e REBOUND #2 ao voltar a 1080x2400 às 23:01:52. Ambos reportaram reanexação de superfície OK, mas os vídeos/fotos mostram imagem girada ou estreita. Rebind OK não demonstra enquadramento correto.
