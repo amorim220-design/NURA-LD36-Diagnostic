@@ -37,6 +37,7 @@ public final class MirrorProjectionService extends Service {
     public static final String ACTION_START = "com.nura.ld36diagnostic.START_VIDEO";
     public static final String ACTION_STOP = "com.nura.ld36diagnostic.STOP_VIDEO";
     public static final String ACTION_REFRESH = "com.nura.ld36diagnostic.REFRESH_DISPLAY";
+    public static final String ACTION_ROTATE = "com.nura.ld36diagnostic.ROTATE_OUTPUT";
     public static final String EXTRA_RESULT = "result";
     public static final String EXTRA_DATA = "data";
     public static final String EXTRA_WIDTH = "width";
@@ -58,6 +59,7 @@ public final class MirrorProjectionService extends Service {
     private int dpiValue;
     private volatile int lastCaptureWidth;
     private volatile int lastCaptureHeight;
+    private volatile int correctionDegrees;
     private volatile int successfulRebinds;
     private volatile int failedRebinds;
     private Thread worker;
@@ -80,6 +82,19 @@ public final class MirrorProjectionService extends Service {
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent == null) { stopSelf(); return START_NOT_STICKY; }
+        if (ACTION_ROTATE.equals(intent.getAction())) {
+            if (capturing.get() && cropRenderer != null) {
+                correctionDegrees = (correctionDegrees + 90) % 360;
+                cropRenderer.setCorrectionDegrees(correctionDegrees);
+                note("ORIENTACAO MANUAL: " + correctionDegrees +
+                    " graus; src=" + lastCaptureWidth + "x" + lastCaptureHeight +
+                    " encoder=1280x720. Verifique a TV.");
+                requestKeyframe();
+            } else {
+                note("Giro manual so disponivel durante espelhamento experimental.");
+            }
+            return START_NOT_STICKY;
+        }
         if (ACTION_REFRESH.equals(intent.getAction())) {
             if (capturing.get()) {
                 handler.postDelayed(() -> refreshScreenDimensions("atividade Android"), 350);
@@ -160,6 +175,8 @@ public final class MirrorProjectionService extends Service {
             capturing.set(true);
             note("Captura H264 iniciada " + width + "x" + height + " 30fps; enviando VDAT.");
             if (cropRenderer != null) {
+                note("Orientacao v0.8: UV manual=0, SurfaceTexture matriz preservada; " +
+                    "toque Girar 90 se a imagem ficar de lado.");
                 handler.postDelayed(() -> refreshScreenDimensions("verificacao inicial"), 1200);
             }
             worker = new Thread(this::encodeLoop, "nura-h264");
@@ -170,6 +187,18 @@ public final class MirrorProjectionService extends Service {
             stopSelf();
         }
         return START_NOT_STICKY;
+    }
+
+    private void requestKeyframe() {
+        MediaCodec current=codec;
+        if (current == null || !capturing.get()) return;
+        try {
+            Bundle params=new Bundle();
+            params.putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME,0);
+            current.setParameters(params);
+        } catch (Exception e) {
+            note("Solicitacao IDR falhou: " + e.getMessage());
+        }
     }
 
     private void refreshScreenDimensions(String reason) {
@@ -208,13 +237,7 @@ public final class MirrorProjectionService extends Service {
                 handler.postDelayed(() -> {
                     MediaCodec active = codec;
                     if (!capturing.get() || active == null) return;
-                    try {
-                        Bundle params = new Bundle();
-                        params.putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0);
-                        active.setParameters(params);
-                    } catch (Exception e) {
-                        note("IDR request unsupported: " + e.getMessage());
-                    }
+                    requestKeyframe();
                 }, 250);
             } catch (Exception ex) {
                 failedRebinds++;
