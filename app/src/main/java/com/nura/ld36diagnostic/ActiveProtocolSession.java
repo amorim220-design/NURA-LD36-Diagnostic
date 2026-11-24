@@ -14,6 +14,7 @@ public final class ActiveProtocolSession {
     public interface Sink {
         void send(byte[] data, String label) throws IOException;
         void note(String message);
+        default void onStartMirror(int videoWidth, int videoHeight, int magic) { }
     }
     private final Sink sink;
     private byte[] waiting = new byte[0];
@@ -124,7 +125,8 @@ public final class ActiveProtocolSession {
             put16(rsp,42,16);
             put32(rsp,44,48000);
             transmit(rsp,"STAR_REPLY_48_DIAGNOSTIC");
-            sink.note("STAR confirmado; ainda sem captura de tela, video ou audio.");
+            sink.note("STAR respondido; aguardando permissao Android para envio opcional de VDAT.");
+            sink.onStartMirror(vw, vh, magic);
         } else {
             sink.note("RX frame tag=" + tag + " len=" + pkt.length);
         }
