@@ -432,7 +432,7 @@ public final class MirrorProjectionService extends Service {
                 worker=new Thread(this::encodeLoop,"nura-h264-auto-"+codecSwitches);
                 worker.start();
                 note("AUTO ORIGINAL TROCA OK #"+codecSwitches+" codec="+newW+
-                    "x"+newH+"; SPS/PPS+IDR novo enviado ao LD36 na sequencia.");
+                    "x"+newH+"; esperando nova configuracao H264; TV ainda precisa de teste.");
                 if(previous!=null) {
                     try{previous.stop();}catch(Exception ignored){}
                     try{previous.release();}catch(Exception ignored){}
@@ -444,20 +444,23 @@ public final class MirrorProjectionService extends Service {
                     note("AUTO ORIGINAL: Surface nova ja anexada; encerre e reinicie captura.");
                     handler.post(this::stopAll);
                 } else {
-                    try {
-                        if(capturing.get() && vd!=null && previousSurface!=null) {
-                            vd.resize(previousW,previousH,dpiValue);
-                            vd.setSurface(previousSurface);
-                            codec=previous;
-                            inputSurface=previousSurface;
-                            switchingEncoder=false;
-                            worker=new Thread(this::encodeLoop,"nura-h264-auto-recovery");
-                            worker.start();
-                            note("AUTO ORIGINAL: restaurado codec anterior.");
-                        }
-                    }catch(Exception recovery) {
-                        note("AUTO ORIGINAL RECUPERACAO FALHOU: "+recovery.getMessage());
-                        handler.post(this::stopAll);
+                    // If the previous encoder worker is STILL alive (possibly
+                    // blocked on a USB write), NEVER start a second reader on
+                    // the same MediaCodec. The old Surface was not transferred.
+                    codec=previous;
+                    inputSurface=previousSurface;
+                    switchingEncoder=false;
+                    if (capturing.get() && previousWorker != null
+                            && previousWorker.isAlive()) {
+                        worker=previousWorker;
+                        note("AUTO ORIGINAL TIMEOUT SEGURO: worker anterior ainda vivo; "+
+                            "sem segundo leitor ou rebind. "+
+                            "Reinicie sessao antes de tentar nova rotacao.");
+                    } else if (capturing.get()) {
+                        worker=new Thread(this::encodeLoop,"nura-h264-auto-recovery");
+                        worker.start();
+                        note("AUTO ORIGINAL RECUPERACAO: worker anterior terminou; "+
+                            "leitura retomada no codec original.");
                     }
                 }
                 if(next!=null && !transferred) {

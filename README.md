@@ -1,3 +1,13 @@
+# v1.2 — proteção contra dois leitores concorrentes do MediaCodec
+
+Evidência teste v1.1: primeira troca 720x1280 -> 1280x720 reportou êxito, porém retorno a 720x1280 teve `timeout aguardando encoder anterior`; um segundo timeout ocorreu em seguida. O código da v1.1 criava outro thread de leitura sem confirmar que o anterior havia encerrado, podendo disputar o mesmo MediaCodec.
+
+Mudança de segurança isolada: quando a transferência de Surface ainda não aconteceu e a thread anterior está viva, **não iniciar outro leitor** e manter Surface/codec existentes. Se a thread já terminou, o leitor antigo pode ser reiniciado. O log diferencia `AUTO ORIGINAL TIMEOUT SEGURO` e `AUTO ORIGINAL RECUPERACAO`. Log de troca bem-sucedida agora informa que o novo H264 aguarda validação, sem alegar entrega de SPS/PPS/IDR à TV.
+
+**Ainda não resolve a possível causa inicial do timeout:** a thread pode estar bloqueada na escrita USB. A versão é um teste de recuperação segura, não uma correção comprovada de rotação. Não reiniciar repetidamente durante falha; usar Original v0.4 como fallback e exportar TXT. Protocolo AOA intacto.
+
+---
+
 # v1.1 — AUTO ORIGINAL (teste isolado de mudança dinâmica de resolução H.264)
 
 Resultado real: Original v0.4 continua com imagem na TV; TV DIRETO v1.0 não apresentou imagem; GPU v0.8-v0.9 distorceu em todos os ângulos. Por isso o novo caminho inicia **exatamente como o Original** (MediaProjection -> VirtualDisplay -> MediaCodec Surface). Não usa EGL/OpenGL. Não altera os pacotes AOA/VDAT.
