@@ -131,7 +131,7 @@ public final class MainActivity extends Activity {
         } else {
             registerReceiver(usbEvents, filter);
         }
-        appendLog("NURA LD36 Diagnostic v0.6.0: ajuste automatico de orientacao sem cortar a imagem.");
+        appendLog("NURA LD36 Diagnostic v0.7.0: reparo VirtualDisplay + Surface, modo anterior preservado.");
         appendLog("Modo passivo: somente RX. Nenhum comando será enviado ao dongle.");
         appendLog("Feche o aplicativo Mirror original antes de conectar o LD36.");
         discoverAccessory();
@@ -152,7 +152,13 @@ public final class MainActivity extends Activity {
     @Override public void onConfigurationChanged(Configuration config) {
         super.onConfigurationChanged(config);
         appendLog("Android rotacionou: " + (config.orientation == Configuration.ORIENTATION_LANDSCAPE
-            ? "HORIZONTAL" : "VERTICAL") + ". Serviço ajusta a imagem sem interromper USB.");
+            ? "HORIZONTAL" : "VERTICAL") + ". Solicitando atualizacao da superficie.");
+        if (videoStarted) {
+            Intent refresh = new Intent(this, MirrorProjectionService.class);
+            refresh.setAction(MirrorProjectionService.ACTION_REFRESH);
+            try { startService(refresh); }
+            catch (RuntimeException e) { appendLog("Falha ao atualizar superficie: " + e.getMessage()); }
+        }
     }
 
     @Override protected void onDestroy() {
@@ -177,7 +183,7 @@ public final class MainActivity extends Activity {
         TextView title = text("LD36 Diagnostic", 28, INK, Typeface.BOLD);
         title.setPadding(0, dp(7), 0, dp(5));
         root.addView(title);
-        TextView subtitle = text("VERSÃO 0.6.0 • ROTAÇÃO AUTOMÁTICA", 13, ACCENT, Typeface.BOLD);
+        TextView subtitle = text("VERSÃO 0.7.0 • TESTE DE ROTAÇÃO USB", 13, ACCENT, Typeface.BOLD);
         root.addView(subtitle);
 
         LinearLayout statusCard = columnCard();
@@ -208,23 +214,24 @@ public final class MainActivity extends Activity {
         addToRoot(root, fitLabel, 16);
         Spinner fitPicker = new Spinner(this);
         String[] fitting = {
-            "Original (v0.4) — sem ajustes ao girar",
-            "Automático (recomendado) — sem cortes e acompanha rotação"
+            "Original (v0.4) — imagem que funcionou",
+            "Rotação experimental — superfície atualizada"
         };
         ArrayAdapter<String> fitAdapter = new ArrayAdapter<>(this,
             android.R.layout.simple_spinner_item, fitting);
         fitAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         fitPicker.setAdapter(fitAdapter);
         fitPicker.setBackgroundColor(PANEL);
-        fillTvSelected = getPreferences(MODE_PRIVATE).getBoolean("auto_fit_v06", true);
+        // Safety first: users saw broken images in 0.5/0.6; default to working 0.4 path.
+        fillTvSelected = getPreferences(MODE_PRIVATE).getBoolean("dynamic_rotation_v07", false);
         fitPicker.setSelection(fillTvSelected ? 1 : 0);
         fitPicker.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                 boolean changed = fillTvSelected != (position == 1);
                 fillTvSelected = (position == 1);
-                getPreferences(MODE_PRIVATE).edit().putBoolean("auto_fit_v06", fillTvSelected).apply();
+                getPreferences(MODE_PRIVATE).edit().putBoolean("dynamic_rotation_v07", fillTvSelected).apply();
                 if (changed) appendLog("Modo selecionado: " +
-                    (fillTvSelected ? "AUTOMATICO sem cortes, com ajuste de rotacao." : "ORIGINAL v0.4, sem adaptacao.") +
+                    (fillTvSelected ? "EXPERIMENTAL: reanexacao de superficie e ajuste de rotacao." : "ORIGINAL v0.4, sem adaptacao.") +
                     " A mudanca vale para o proximo teste.");
             }
             @Override public void onNothingSelected(AdapterView<?> parent) { }
@@ -287,7 +294,7 @@ public final class MainActivity extends Activity {
         exportText.setOnClickListener(v -> requestExport(false));
         exportBin.setOnClickListener(v -> requestExport(true));
 
-        TextView note = text("Novo modo Automático: imagem inteira e rotação do celular acompanhada em tempo real, sem esticar nem recortar. Bordas são normais quando a proporção do app difere da TV. Original mantém o caminho v0.4. O áudio ainda não foi implementado.", 12, MUTED, Typeface.NORMAL);
+        TextView note = text("v0.7: Original preserva o caminho da v0.4. Rotação experimental atualiza a superfície do Android ao girar sem recorte proposital. Se a TV continuar mostrando faixas ou imagem lateral, volte ao Original e exporte TXT. Áudio ainda indisponível.", 12, MUTED, Typeface.NORMAL);
         note.setPadding(0, dp(17), 0, 0);
         root.addView(note);
     }

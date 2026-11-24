@@ -76,18 +76,39 @@ public final class ScreenCropRenderer implements AutoCloseable {
 
     public Surface getCaptureSurface() { return sourceSurface; }
 
-    /** Resize capture buffer and recalculate the aspect-correct quad on the EGL thread. */
-    public void updateCapturedSize(int width,int height) {
-        if(closed||width<240||height<240||width>4096||height>4096)return;
-        if(width==displayWidth&&height==displayHeight)return;
-        displayWidth=width;displayHeight=height;
-        Handler h=handler;
-        if(h!=null)h.post(() -> {
-            if(closed||sourceTexture==null)return;
-            sourceTexture.setDefaultBufferSize(width,height);
-            float[] v=AspectFit.vertices(width,height,encodedWidth,encodedHeight);
-            pos.clear();pos.put(v).position(0);
+    /**
+     * Resize the consumer buffer BEFORE VirtualDisplay.resize/setSurface.
+     * Synchronous to avoid an old-size buffer being rebound during rotation.
+     */
+    public boolean updateCapturedSize(int width, int height) {
+        if (closed || width < 240 || height < 240 || width > 4096 || height > 4096) return false;
+        if (width == displayWidth && height == displayHeight) return true;
+        Handler h = handler;
+        if (h == null) return false;
+        CountDownLatch ready = new CountDownLatch(1);
+        java.util.concurrent.atomic.AtomicBoolean updated = new java.util.concurrent.atomic.AtomicBoolean(false);
+        h.post(() -> {
+            try {
+                if (closed || sourceTexture == null) return;
+                sourceTexture.setDefaultBufferSize(width, height);
+                float[] geometry = AspectFit.vertices(width, height, encodedWidth, encodedHeight);
+                pos.clear();
+                pos.put(geometry);
+                pos.position(0);
+                displayWidth = width;
+                displayHeight = height;
+                updated.set(true);
+            } finally {
+                ready.countDown();
+            }
         });
+        try {
+            if (!ready.await(1500, TimeUnit.MILLISECONDS)) return false;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+        return updated.get();
     }
     public int getRenderedFrames() { return rendered; }
 
@@ -182,7 +203,7 @@ public final class ScreenCropRenderer implements AutoCloseable {
             check(EGL14.eglSwapBuffers(eglDisplay,eglSurface),"eglSwapBuffers");
             rendered++;
         } catch(Exception e) {
-            android.util.Log.e("NURA-LD36","GPU crop render failed",e);
+            android.util.Log.e("NURA-LD36","GPU frame render failed",e);
         }
     }
     private void cleanup() {

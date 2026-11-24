@@ -1,3 +1,27 @@
+# NURA LD36 v0.7.0 — diagnóstico direcionado de rotação (ainda experimental)
+
+**Evidência física:** a versão 0.4 exibiu vídeo na TV, com pequenas bordas; a 0.5 cortou a imagem e a 0.6 exibiu faixas, conteúdo girado e enquadramento errado. **Não declarar que v0.7 corrigiu até validar em hardware.**
+
+## Correção implementada no código
+
+- A opção **Original (v0.4)** volta a ser padrão. Sem GPU de composição, mantém o caminho de vídeo que o usuário confirmou na TV.
+- A opção **Rotação experimental** usa uma superfície de captura separada da superfície do encoder; a GPU preserva toda a imagem com barras se necessário, **não usa crop**.
+- Quando o Android reporta mudança de dimensões: VirtualDisplay.setSurface(null) -> atualiza SurfaceTexture.setDefaultBufferSize() na thread EGL e aguarda conclusão -> VirtualDisplay.resize() -> VirtualDisplay.setSurface(captureSurface) -> solicita quadro-chave H.264.
+- Logs de REBOUND (sucesso ou falha) mostram os resultados da operação; também há atualização após a configuração da atividade ou DisplayManager.
+
+## Teste físico (sem áudio)
+
+1. Instale v0.7 e **guarde v0.4** para comparação.
+2. Selecione **Original** e confirme que a imagem se comporta como na v0.4. Se não funcionar, interrompa o teste e reporte.
+3. Pare. Selecione **Rotação experimental**, inicie espelhamento (90 segundos), autorize compartilhamento de tela/USB.
+4. Com a captura ativa, abra um aplicativo vertical e depois um jogo horizontal. Gire fisicamente o celular; observe imagem inteira, barras, orientação e estabilidade.
+5. Exporte TXT para encontrar eventos REBOUND e erros. A captura TX pode ter 32 MiB mesmo que todo o vídeo tenha sido enviado.
+6. Se a imagem voltar a ficar de lado, cortada ou comprimida, pare e volte ao Original; não trate o modo experimental como estável.
+
+Limitações: o resultado ainda depende do compositor MediaProjection da ROM Android 11, dos eventos de rotação recebidos e do decodificador LD36. O encoder H.264 continua 1280x720 no modo experimental e o áudio **não está implementado**.
+
+---
+
 # NURA LD36 v0.6.0 — correcao de rotacao, sem cortes
 
 **Problema no teste físico da v0.5:** em modo Preencher TV a imagem ficou cortada. Ao abrir um jogo e girar o celular, apenas uma parte da tela aparecia na TV.
