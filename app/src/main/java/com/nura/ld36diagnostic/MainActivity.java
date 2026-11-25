@@ -74,6 +74,7 @@ public final class MainActivity extends Activity {
     private boolean vdatAngleSelected;
     private boolean invertedAngleSelected;
     private boolean landscapeStartSelected;
+    private boolean nativeOrientationStartSelected;
     private volatile int vdatAngleDegrees;
     private volatile int vdatAngleChanges;
     private volatile long vdatAngleFrames0, vdatAngleFrames90, vdatAngleFrames180, vdatAngleFrames270;
@@ -141,7 +142,7 @@ public final class MainActivity extends Activity {
         } else {
             registerReceiver(usbEvents, filter);
         }
-        appendLog("NURA LD36 Diagnostic v1.6.0: teste de inicio horizontal nativo 1280x720.");
+        appendLog("NURA LD36 Diagnostic v1.7.0: testar orientação real no início sem girar o app.");
         appendLog("Modo passivo: somente RX. Nenhum comando será enviado ao dongle.");
         appendLog("Feche o aplicativo Mirror original antes de conectar o LD36.");
         discoverAccessory();
@@ -195,7 +196,7 @@ public final class MainActivity extends Activity {
         TextView title = text("LD36 Diagnostic", 28, INK, Typeface.BOLD);
         title.setPadding(0, dp(7), 0, dp(5));
         root.addView(title);
-        TextView subtitle = text("VERSÃO 1.6.0 • PAISAGEM NA PARTIDA", 13, ACCENT, Typeface.BOLD);
+        TextView subtitle = text("VERSÃO 1.7.0 • ORIENTAÇÃO NATURAL", 13, ACCENT, Typeface.BOLD);
         root.addView(subtitle);
 
         LinearLayout statusCard = columnCard();
@@ -232,7 +233,8 @@ public final class MainActivity extends Activity {
             "AUTO ORIGINAL v1.1 — troca codec (congela, evitar)",
             "VDAT ANGLE v1.4 — giro anterior (referência)",
             "VDAT INVERTIDO v1.5 — inverter orientação na TV",
-            "PAISAGEM NA PARTIDA v1.6 — 1280x720 desde o início"
+            "PAISAGEM NA PARTIDA v1.6 — 1280x720 desde o início",
+            "ORIENTAÇÃO NATURAL v1.7 — sem forçar giro do aplicativo"
         };
         ArrayAdapter<String> fitAdapter = new ArrayAdapter<>(this,
             android.R.layout.simple_spinner_item, fitting);
@@ -240,43 +242,54 @@ public final class MainActivity extends Activity {
         fitPicker.setAdapter(fitAdapter);
         fitPicker.setBackgroundColor(PANEL);
         // New mode is opt-in: known-working Original remains safe initial selection.
-        int mode = getPreferences(MODE_PRIVATE).getInt("capture_mode_v16",
+        int mode = getPreferences(MODE_PRIVATE).getInt("capture_mode_v17",
+            getPreferences(MODE_PRIVATE).getInt("capture_mode_v16",
             getPreferences(MODE_PRIVATE).getInt("capture_mode_v15",
-                getPreferences(MODE_PRIVATE).getInt("capture_mode_v13", 0)));
-        if (mode < 0 || mode > 6) mode = 0;
+                getPreferences(MODE_PRIVATE).getInt("capture_mode_v13", 0))));
+        if (mode < 0 || mode > 7) mode = 0;
         fillTvSelected = mode == 1;
         directTvSelected = mode == 2;
         autoOriginalSelected = mode == 3;
-        vdatAngleSelected = mode == 4 || mode == 5 || mode == 6;
-        invertedAngleSelected = mode == 5 || mode == 6;
+        vdatAngleSelected = mode == 4 || mode == 5 || mode == 6 || mode == 7;
+        invertedAngleSelected = mode == 5 || mode == 6 || mode == 7;
         landscapeStartSelected = mode == 6;
+        nativeOrientationStartSelected = mode == 7;
         fitPicker.setSelection(mode);
         fitPicker.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                 boolean gpu = position == 1;
                 boolean direct = position == 2;
                 boolean auto = position == 3;
-                boolean angle = position == 4 || position == 5 || position == 6;
-                boolean inverted = position == 5 || position == 6;
+                boolean angle = position == 4 || position == 5 || position == 6 || position == 7;
+                boolean inverted = position == 5 || position == 6 || position == 7;
                 boolean landscape = position == 6;
+                boolean nativeOrientation = position == 7;
                 boolean changed = fillTvSelected != gpu ||
                     directTvSelected != direct ||
                     autoOriginalSelected != auto || vdatAngleSelected != angle ||
-                    invertedAngleSelected != inverted || landscapeStartSelected != landscape;
+                    invertedAngleSelected != inverted || landscapeStartSelected != landscape ||
+                    nativeOrientationStartSelected != nativeOrientation;
                 fillTvSelected = gpu;
                 directTvSelected = direct;
                 autoOriginalSelected = auto;
                 vdatAngleSelected = angle;
                 invertedAngleSelected = inverted;
                 landscapeStartSelected = landscape;
-                getPreferences(MODE_PRIVATE).edit().putInt("capture_mode_v16", position).apply();
+                nativeOrientationStartSelected = nativeOrientation;
+                getPreferences(MODE_PRIVATE).edit().putInt("capture_mode_v17", position).apply();
+                if (nativeOrientation && !running.get()) {
+                    setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+                    appendLog("v1.7: orientação do aplicativo liberada. "+
+                        "O codificador usará apenas a orientação física no início.");
+                }
                 if (changed) appendLog("Captura selecionada: " +
+                    (nativeOrientation ? "v1.7 NATURAL - escolhe codec pelo display REAL no início; não força rotação" :
                     (landscape ? "PAISAGEM NA PARTIDA v1.6 - 1280x720 inicial, sem troca ao vivo" :
                     (inverted ? "VDAT INVERTIDO v1.5 - 0/90 trocados" :
                     (angle ? "VDAT ANGLE v1.4 - mapeamento anterior" :
                         (auto ? "AUTO ORIGINAL v1.1 (sujeito a congelar)" :
                             (direct ? "TV DIRETO v1.0 (sem imagem no teste)" :
-                                (gpu ? "GPU experimental anterior" : "Original v0.4")))))) +
+                                (gpu ? "GPU experimental anterior" : "Original v0.4"))))))) +
                     ". Valido apenas na proxima sessao.");
             }
             @Override public void onNothingSelected(AdapterView<?> parent) { }
@@ -371,7 +384,7 @@ public final class MainActivity extends Activity {
         exportText.setOnClickListener(v -> requestExport(false));
         exportBin.setOnClickListener(v -> requestExport(true));
 
-        TextView note = text("v1.6 PAISAGEM NA PARTIDA: teste somente na horizontal. Selecionar este modo e iniciar espelhamento: Android vira a interface horizontal ANTES da permissao e cria o MediaCodec diretamente em 1280x720, SEM trocar resolucao durante a sessao. VDAT invertido continua em 0 graus no Android horizontal. Se girar o celular apos iniciar, o tamanho do codec NAO acompanha: finalize e inicie outra sessao. O modo vertical v1.5 foi preservado. Exporte TXT e fotografe TV. Audio indisponivel.", 12, MUTED, Typeface.NORMAL);
+        TextView note = text("v1.7 ORIENTAÇÃO NATURAL: não gira a interface à força. A captura começa em 720x1280 se o Android estiver vertical ou 1280x720 se horizontal. Para testar paisagem, gire ANTES de autorizar a gravação; não altere a orientação até encerrar. Não troca MediaCodec, Surface nem SPS/PPS durante a sessão. Modo v1.5 mantém a referência vertical. Envie TXT e foto da TV. Áudio indisponível.", 12, MUTED, Typeface.NORMAL);
         note.setPadding(0, dp(17), 0, 0);
         root.addView(note);
     }
@@ -446,6 +459,12 @@ public final class MainActivity extends Activity {
             },900);
             return;
         }
+        if (nativeOrientationStartSelected) {
+            setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+            appendLog("v1.7: sem rotação forçada. Para teste HORIZONTAL, "+
+                "gire o celular antes de conceder a permissão de captura; "+
+                "se a tela física estiver vertical, o teste iniciará vertical.");
+        }
         requestProjectionConsent();
     }
 
@@ -482,6 +501,11 @@ public final class MainActivity extends Activity {
                 int actualW = displaySize.x > 0 ? displaySize.x : metrics.widthPixels;
                 int actualH = displaySize.y > 0 ? displaySize.y : metrics.heightPixels;
                 boolean portrait = actualH >= actualW;
+                if (nativeOrientationStartSelected) {
+                    appendLog("v1.7 PERFIL NATURAL: display real="+actualW+"x"+actualH+
+                        " -> codec inicial="+(portrait ? "720x1280" : "1280x720")+
+                        "; sem mudar codec ao girar no meio da sessão.");
+                }
                 if (landscapeStartSelected && portrait) {
                     appendLog("PAISAGEM v1.6: orientacao vertical antes do STAR; "+
                         "cancelando sem iniciar encoder.");
@@ -511,11 +535,12 @@ public final class MainActivity extends Activity {
                 vdatAngleAwaitFirstPacket=-1;
                 appendLog("Tela real: " + actualW + "x" + actualH + " -> encoder "
                     + encoderW + "x" + encoderH
-                    + (landscapeStartSelected ? " | v1.6 PAISAGEM 1280x720 NA PARTIDA, SEM RECONFIGURAR" :
+                    + (nativeOrientationStartSelected ? " | v1.7 PERFIL NATURAL - SEM GIRO FORÇADO" :
+                      (landscapeStartSelected ? " | v1.6 PAISAGEM 1280x720 NA PARTIDA, SEM RECONFIGURAR" :
                         (vdatAngleSelected ? " | VDAT ANGLE - CODEC ORIGINAL FIXO" :
                         (autoOriginalSelected ? " | AUTO ORIGINAL v1.1 - CODIFICADOR DINAMICO" :
                             (directTvSelected ? " | TV DIRETO v1.0 (experimental falhou)" :
-                                (fillTvSelected ? " | GPU ANTIGA" : " | ORIGINAL v0.4"))))));
+                                (fillTvSelected ? " | GPU ANTIGA" : " | ORIGINAL v0.4")))))));
                 projectionConsent = null; // MediaProjection consent token must be used once.
                 if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent);
                 else startService(intent);
