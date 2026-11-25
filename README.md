@@ -1,3 +1,17 @@
+# v1.5 — teste controlado de orientação INVERTIDA na TV
+
+Pedido do usuário após foto com bordas claras em cima/baixo e pretas nas laterais: inverter o comportamento da orientação da TV. O modo adicional **VDAT INVERTIDO v1.5** modifica só o valor do campo int32 `angle` dos pacotes VDAT:
+- Android 0° -> VDAT 90°
+- Android 90° -> VDAT 0°
+- Android 180° -> VDAT 270°
+- Android 270° -> VDAT 180°
+
+Mantém o mesmo MediaCodec, a Surface, a resolução de captura e os pacotes AOA da v1.4. NÃO implementa aumento de escala e não garante ajuste completo das bordas. O modo Original v0.4 continua o padrão seguro; o modo VDAT ANGLE v1.4 continua como controle comparativo. O aplicativo exporta logs Android angle versus valor efetivamente enviado e contadores TX após o giro.
+
+Teste físico: selecionar VDAT INVERTIDO v1.5, espelhar primeiro com celular em retrato; fotografar imagem na TV; girar para paisagem e fotografar; retornar para retrato; exportar TXT. Critérios: orientação visual corresponde ao desejo do usuário, não aumenta cortes, não há freeze/tela preta. Caso falhe, voltar ao Original ou VDAT ANGLE v1.4. Não considerar o comportamento aprovado sem observação na TV.
+
+---
+
 # v1.4 — diagnostico da confirmacao real de envio VDAT apos giro
 
 Reanalisado arquivo fisico TX de 2026-11-24: 30.040.644 bytes, estrutura sem gaps, 2.040 quadros VDAT (1 SPS/PPS e 2.039 quadros de video), angulos 0=1.632 e 90=407 pacotes e 91 heartbeats. Foram seis mudancas de valor apos angulo inicial. Os dados mostram o que o app transmitiu, NAO como a TV exibiu.
