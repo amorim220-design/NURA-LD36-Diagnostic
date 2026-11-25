@@ -1,3 +1,16 @@
+# NURA LD36 v3.1 — Diagnóstico não invasivo da rotação
+
+**Requisito:** retrato nítido e proporcional (barras laterais aceitáveis); paisagem preenchendo TV sem deformação; rotação contínua sem solicitar nova autorização.
+
+**Evidências físicas:** v2.2 com retrato aprovado, mas interrompe a captura ao girar. v2.6 permite rotação contínua, mas 1080x2400 é ajustado ao encoder fixo 1280x576, gerando apenas ~259px de largura útil no retrato. v2.3 travou ao trocar MediaCodec/Surface, v2.5 congelou quadros na GPU. v2.7/v2.8/v2.9 erraram orientação/proporção. A PR v3.0 com 1920x864 também NÃO está aprovada.
+
+**Limite de protocolo:** ActiveProtocolSession anuncia a resolução na resposta RRIM/STAR; VideoPacket/RRIM/VDAT inclui timestamp, angle e H264 Annex-B, mas não possui campo próprio para renegociar as dimensões no meio da transmissão. O SPS/PPS muda se trocar o codec; não há prova de que o LD36 aceite isso durante a mesma sessão AOA. Não ativar troca dinâmica apenas porque o build passou.
+
+**Mudança desta PR:** base exatamente v2.6. Instrumentação passiva a cada 5s (modo GIRO RÁPIDO) registra `v3.1 PIPELINE`: fonte/encoder, frames renderizados pela GPU, frames codificados enviados ao VideoSink, bytes H264, idade do último frame, idade da orientação e estado de resize. Preserva todos os quadros, H264, VDAT, AOA, MediaProjection e timers da v2.6. O TXT já existente recebe os registros; comparação com os contadores USB finais ajuda separar GPU, encoder ou transporte. Não é correção de geometria nem requer novo teste físico obrigatório.
+
+**Próximo bloqueio:** confirmar a possibilidade de reconfiguração/renegociação do decodificador do LD36 por análise do app original e testes isolados do protocolo, nunca injetando comandos desconhecidos no acessório. Só então projetar um caminho que entregue retrato como v2.2 e paisagem como v2.6, sem reiniciar a captura.
+
+---
 # NURA LD36 v2.6 — giro rápido sem congelamento de quadros (experimental)
 
 A v2.5 falhou fisicamente: depois do giro, a imagem ficou congelada e o log deixou de registrar vídeo, embora o USB continuasse. Revertido o mecanismo de retenção de quadros. Esta versão parte **diretamente da v2.4**, última com rotação contínua confirmada na TV, porém com efeito transitório de imagem pequena.
