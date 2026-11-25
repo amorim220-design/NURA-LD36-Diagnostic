@@ -1,3 +1,15 @@
+# NURA LD36 v3.0 — RETRATO PROPORCIONAL (CALIBRAÇÃO 35% EXPERIMENTAL)
+
+Requisito confirmado: celular vertical deve mostrar imagem **em pé, não esticada e legível** mesmo com barras laterais; celular horizontal deve preencher a TV sem cortar bordas. Não é necessário que o retrato preencha a TV.
+
+Evidência física: v2.9 GPU270/VDAT0 mostrou orientação correta, porém a imagem foi **esticada**. v2.6 teve rotação contínua, mas letras verticais borradas. v2.8 ficou invertida em 180°. v2.5 congelou frames e v2.3 travou o app.
+
+Alteração isolada em v3.0: mantém v2.9 GPU270/VDAT0 no retrato e GPU0/VDAT90 na paisagem, com H264 1280x576 constante e mesma sessão AOA/MediaProjection/MediaCodec. No ScreenCropRenderer, o quadro em retrato (GPU270) tem a largura multiplicada por **0.35** no eixo X ao desenhar quad OpenGL. A área livre do encoder vira barras pretas laterais. Em paisagem largura permanece 100%. Essa é uma calibragem inicial, **não** comprova que o LD36 exibirá proporção natural: o dispositivo pode aplicar redimensionamentos posteriores. v2.9 e v2.6 continuam como opções de recuo, sem alteração de seus perfis.
+
+**Teste físico:** escolher RETRATO PROPORCIONAL v3.0, espelhar com celular parado na vertical. Verificar 1) orientação correta; 2) barras laterais; 3) letras legíveis sem deformação; 4) imagem não excessivamente estreita. Se estiver esticada, deitada ou ilegível, interromper e selecionar GIRO RÁPIDO v2.6. Só testar uma rotação para paisagem se o retrato estiver correto. Enviar foto e TXT, procurando `v3.0 TESTE PROPORCAO`, `v3.0 RETRATO PROPORCIONAL` e `portraitScale=0.35`. CI aprova build, não comprova enquadramento na TV.
+
+---
+
 # NURA LD36 v2.9 — RETRATO CORRETO (TESTE EXPERIMENTAL)
 
 **Requisito confirmado pelo usuário:** retrato não precisa preencher a TV; imagem vertical precisa ser legível, centralizada e sem deformação, barras laterais aceitas. Paisagem deve preencher a TV corretamente. Rotação contínua preservada.
