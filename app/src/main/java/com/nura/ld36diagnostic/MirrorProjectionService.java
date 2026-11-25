@@ -56,6 +56,7 @@ public final class MirrorProjectionService extends Service {
     public static final String EXTRA_FAST_CANVAS = "fast_canvas_rotation";
     public static final String EXTRA_PORTRAIT_ROTATE = "portrait_gpu_rotate";
     public static final String EXTRA_PORTRAIT_UPRIGHT = "portrait_gpu_upright";
+    public static final String EXTRA_PORTRAIT_ASPECT = "portrait_gpu_aspect";
     private static final int NOTIFICATION_ID = 36;
     private static final String CHANNEL = "ld36_projection";
     private final AtomicBoolean capturing = new AtomicBoolean(false);
@@ -80,6 +81,7 @@ public final class MirrorProjectionService extends Service {
     private volatile boolean fastCanvasMode;
     private volatile boolean portraitRotateMode;
     private volatile boolean portraitUprightMode;
+    private volatile boolean portraitAspectMode;
     private int pendingCanvasWidth, pendingCanvasHeight;
     private volatile int canvasResizeGeneration;
     private volatile boolean canvasResizeInFlight;
@@ -209,6 +211,7 @@ public final class MirrorProjectionService extends Service {
             fastCanvasMode = fixedCanvasMode && intent.getBooleanExtra(EXTRA_FAST_CANVAS, false);
             portraitRotateMode = fastCanvasMode && intent.getBooleanExtra(EXTRA_PORTRAIT_ROTATE, false);
             portraitUprightMode = portraitRotateMode && intent.getBooleanExtra(EXTRA_PORTRAIT_UPRIGHT, false);
+            portraitAspectMode = portraitUprightMode && intent.getBooleanExtra(EXTRA_PORTRAIT_ASPECT, false);
             pendingCanvasWidth=0;pendingCanvasHeight=0;
             canvasResizeGeneration++;
             canvasResizeInFlight=false;
@@ -248,6 +251,14 @@ public final class MirrorProjectionService extends Service {
                 // Video codec, decoder SPS/PPS and AOA stay FIXED for entire session.
                 // GPU compositor keeps aspect ratio on a changing source geometry.
                 cropRenderer = new ScreenCropRenderer(inputSurface, sourceWidth, sourceHeight, width, height);
+                if(portraitAspectMode) {
+                    // A trial width calibration for upright portrait.
+                    // v2.9 upright uses full-width=1.0 and stretches on the TV.
+                    cropRenderer.setPortraitWidthScale(0.35f);
+                    note("v3.0 RETRATO PROPORCIONAL: quad width 35% quando GPU=270/retrato; "+
+                        "paisagem mantida 100%; H264="+width+"x"+height+
+                        ", sessao USB/MediaProjection intacta");
+                }
                 if(portraitRotateMode && sourceHeight>sourceWidth) {
                     int portraitGpuAngle=portraitUprightMode ? 270 : 90;
                     cropRenderer.setCorrectionDegrees(portraitGpuAngle);
@@ -429,9 +440,10 @@ public final class MirrorProjectionService extends Service {
                                 vd.resize(targetW,targetH,dpiValue);
                                 lastCaptureWidth=targetW;lastCaptureHeight=targetH;
                                 requestKeyframe();
-                                note((portraitUprightMode ? "v2.9 RETRATO PROPORCIONAL" :
+                                note((portraitAspectMode ? "v3.0 RETRATO QUAD CALIBRADO" :
+                                    (portraitUprightMode ? "v2.9 RETRATO PROPORCIONAL" :
                                     (portraitRotateMode ? "v2.7 PORTRAIT GPU RECONFIGURADO" :
-                                    (fastCanvasMode ? "v2.6 CANVAS RECONFIGURADO" : "v2.4 CANVAS RECONFIGURADO")))+
+                                    (fastCanvasMode ? "v2.6 CANVAS RECONFIGURADO" : "v2.4 CANVAS RECONFIGURADO"))))+
                                     ": "+targetW+"x"+targetH+
                                     " dentro de H264 FIXO="+encoderWidth+"x"+encoderHeight+
                                     " | "+renderer.getMatrixDiagnostic());
