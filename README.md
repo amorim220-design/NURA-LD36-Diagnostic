@@ -1,3 +1,13 @@
+# NURA LD36 v2.6 — giro rápido sem congelamento de quadros (experimental)
+
+A v2.5 falhou fisicamente: depois do giro, a imagem ficou congelada e o log deixou de registrar vídeo, embora o USB continuasse. Revertido o mecanismo de retenção de quadros. Esta versão parte **diretamente da v2.4**, última com rotação contínua confirmada na TV, porém com efeito transitório de imagem pequena.
+
+Novo modo opt-in GIRO RÁPIDO v2.6: mantém MediaCodec e H264 em 1280x576, VDAT90, USB AOA e uma única MediaProjection durante toda a sessão. Não congela nem suspende frames GPU. A espera de estabilização é reduzida de 450ms para 90ms; eventos repetidos de orientação são agrupados. Se um resize anterior ainda estiver em curso, é solicitada verificação depois dele, em vez de abandonar a orientação nova. Preserva CANVAS FIXO v2.4 para retorno imediato. Modos v2.3 (travamento) e v2.5 (congelamento) ficam bloqueados no seletor.
+
+**Teste físico:** iniciar vertical, conferir movimento contínuo da tela, girar uma vez para horizontal e observar se o efeito pequeno→grande encurtou ou desapareceu. Repetir inverso somente se estável. Enviar TXT, verificar `v2.6 CANVAS RECONFIGURADO`, quadros H264 depois do giro, ausência de novas sessões USB. A renderização vertical deste modo continua com o canvas fixo e pode apresentar barras normais diferentes da v2.1. Compilação CI não comprova comportamento no LD36.
+
+---
+
 # NURA LD36 v2.4 — CANVAS FIXO (EXPERIMENTAL)
 
 **Motivo:** v2.3 reconfigurou MediaCodec e VirtualDisplay com a captura aberta. Teste físico relatou imagem reduzida/cortada, travamento na rotação e falha na próxima captura. O modo v2.3 foi bloqueado no seletor para evitar repetição.
