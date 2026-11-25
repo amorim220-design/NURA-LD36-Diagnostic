@@ -55,6 +55,7 @@ public final class MirrorProjectionService extends Service {
     public static final String EXTRA_FIXED_CANVAS = "fixed_canvas_rotation";
     public static final String EXTRA_FAST_CANVAS = "fast_canvas_rotation";
     public static final String EXTRA_PORTRAIT_ROTATE = "portrait_gpu_rotate";
+    public static final String EXTRA_PORTRAIT_UPRIGHT = "portrait_gpu_upright";
     private static final int NOTIFICATION_ID = 36;
     private static final String CHANNEL = "ld36_projection";
     private final AtomicBoolean capturing = new AtomicBoolean(false);
@@ -78,6 +79,7 @@ public final class MirrorProjectionService extends Service {
     private volatile boolean fixedCanvasMode;
     private volatile boolean fastCanvasMode;
     private volatile boolean portraitRotateMode;
+    private volatile boolean portraitUprightMode;
     private int pendingCanvasWidth, pendingCanvasHeight;
     private volatile int canvasResizeGeneration;
     private volatile boolean canvasResizeInFlight;
@@ -206,6 +208,7 @@ public final class MirrorProjectionService extends Service {
             fixedCanvasMode = intent.getBooleanExtra(EXTRA_FIXED_CANVAS, false);
             fastCanvasMode = fixedCanvasMode && intent.getBooleanExtra(EXTRA_FAST_CANVAS, false);
             portraitRotateMode = fastCanvasMode && intent.getBooleanExtra(EXTRA_PORTRAIT_ROTATE, false);
+            portraitUprightMode = portraitRotateMode && intent.getBooleanExtra(EXTRA_PORTRAIT_UPRIGHT, false);
             pendingCanvasWidth=0;pendingCanvasHeight=0;
             canvasResizeGeneration++;
             canvasResizeInFlight=false;
@@ -246,9 +249,12 @@ public final class MirrorProjectionService extends Service {
                 // GPU compositor keeps aspect ratio on a changing source geometry.
                 cropRenderer = new ScreenCropRenderer(inputSurface, sourceWidth, sourceHeight, width, height);
                 if(portraitRotateMode && sourceHeight>sourceWidth) {
-                    cropRenderer.setCorrectionDegrees(90);
-                    note("v2.7 PORTRAIT ROTATE INICIO: GPU=90, src="+sourceWidth+"x"+sourceHeight+
-                        " -> H264="+width+"x"+height+"; VDAT continua 90");
+                    int portraitGpuAngle=portraitUprightMode ? 270 : 90;
+                    cropRenderer.setCorrectionDegrees(portraitGpuAngle);
+                    note((portraitUprightMode ? "v2.9 RETRATO PROPORCIONAL" : "v2.7 PORTRAIT ROTATE")+
+                        " INICIO: GPU="+portraitGpuAngle+", src="+sourceWidth+"x"+sourceHeight+
+                        " -> H264="+width+"x"+height+
+                        "; orientação metadata VDAT definida pela Activity");
                 }
                 display = projection.createVirtualDisplay("NURA-LD36", sourceWidth, sourceHeight, dpi,
                     DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
@@ -407,7 +413,8 @@ public final class MirrorProjectionService extends Service {
                     final Surface capture=renderer.getCaptureSurface();
                     // setDefaultBufferSize can wait on EGL. NEVER block UI here.
                     new Thread(() -> {
-                        final int gpuDegrees = (portraitRotateMode && targetH>targetW) ? 90 : 0;
+                        final int gpuDegrees = (portraitRotateMode && targetH>targetW) ?
+                            (portraitUprightMode ? 270 : 90) : 0;
                         boolean ready=renderer.updateCapturedSize(targetW,targetH,gpuDegrees);
                         handler.post(() -> {
                             try {
@@ -422,8 +429,9 @@ public final class MirrorProjectionService extends Service {
                                 vd.resize(targetW,targetH,dpiValue);
                                 lastCaptureWidth=targetW;lastCaptureHeight=targetH;
                                 requestKeyframe();
-                                note((portraitRotateMode ? "v2.7 PORTRAIT GPU RECONFIGURADO" :
-                                    (fastCanvasMode ? "v2.6 CANVAS RECONFIGURADO" : "v2.4 CANVAS RECONFIGURADO"))+
+                                note((portraitUprightMode ? "v2.9 RETRATO PROPORCIONAL" :
+                                    (portraitRotateMode ? "v2.7 PORTRAIT GPU RECONFIGURADO" :
+                                    (fastCanvasMode ? "v2.6 CANVAS RECONFIGURADO" : "v2.4 CANVAS RECONFIGURADO")))+
                                     ": "+targetW+"x"+targetH+
                                     " dentro de H264 FIXO="+encoderWidth+"x"+encoderHeight+
                                     " | "+renderer.getMatrixDiagnostic());

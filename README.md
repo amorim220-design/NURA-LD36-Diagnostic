@@ -1,3 +1,15 @@
+# NURA LD36 v2.9 — RETRATO CORRETO (TESTE EXPERIMENTAL)
+
+**Requisito confirmado pelo usuário:** retrato não precisa preencher a TV; imagem vertical precisa ser legível, centralizada e sem deformação, barras laterais aceitas. Paisagem deve preencher a TV corretamente. Rotação contínua preservada.
+
+**Evidência visual:** v2.6 mantém giro contínuo com letras verticais borradas porque GPU quad=0.2025x1.0 -> 259px úteis no H264 1280x576. v2.7 usou GPU90/VDAT90 e mostrou imagem deitada. v2.8 usou GPU90/VDAT0 e mostrou imagem 180° invertida. Hipótese v2.9: inverter a rotação da GPU para 270° em retrato, mantendo VDAT0 em retrato e GPU0/VDAT90 em paisagem. Isso muda a orientação do conteúdo 180° em relação à v2.8 sem alterar resolução nem protocolo, tentando conservar pixels. A foto da v2.8 não prova proporção correta: **v2.9 não implementa barras laterais garantidas e não deve ser considerada concluída**. O adaptador pode aplicar escala própria. Uma correção de enquadramento/letterbox específica exigirá validar primeiro a interpretação dos ângulos.
+
+**Implementação:** seleção independente v2.9 na Activity; EXTRA_PORTRAIT_UPRIGHT no Service; GPU correction 270° quando fonte em retrato no início e no resize atômico; segue v2.8 com VDAT0 retrato, VDAT90 paisagem; MediaCodec H264 1280x576, USB AOA e MediaProjection contínuos, nenhum HOLD de frames. v2.6 segue disponível; v2.3/v2.5 bloqueados.
+
+**Teste conservador:** iniciar SOMENTE na vertical em RETRATO CORRETO v2.9, observar orientação e letras. Não girar se a imagem estiver deitada, invertida, esticada ou ilegível. Voltar a GIRO RÁPIDO v2.6. Apenas se retrato estiver correto, uma rotação horizontal para validar preenchimento sem cortes e persistência da conexão. Enviar foto + TXT. Aprovação de CI significa compilação, NÃO qualidade de imagem.
+
+---
+
 # NURA LD36 v2.8 — RETRATO ALINHADO (EXPERIMENTAL)
 
 Teste físico v2.7 com o celular na vertical mostrou a imagem deitada na TV. A v2.7 aplicava rotação GPU=90° para recuperar largura útil do encoder (1080x2400 vira 2400x1080 dentro de H264 1280x576), mas manteve VDAT=90°, fazendo a orientação de saída depender de duas transformações.
