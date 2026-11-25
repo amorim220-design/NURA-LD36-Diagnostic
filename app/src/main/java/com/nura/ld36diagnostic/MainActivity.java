@@ -75,6 +75,13 @@ public final class MainActivity extends Activity {
     private boolean invertedAngleSelected;
     private boolean landscapeStartSelected;
     private boolean nativeOrientationStartSelected;
+    private boolean manualAngleTestSelected;
+    private volatile int manualVdatAngle = 0;
+    private volatile long fpsWindowStartMs;
+    private volatile long fpsWindowPackets;
+    private volatile long fpsWindowBytes;
+    private volatile int profileInitialEncoderWidth;
+    private volatile int profileInitialEncoderHeight;
     private volatile int vdatAngleDegrees;
     private volatile int vdatAngleChanges;
     private volatile long vdatAngleFrames0, vdatAngleFrames90, vdatAngleFrames180, vdatAngleFrames270;
@@ -142,7 +149,7 @@ public final class MainActivity extends Activity {
         } else {
             registerReceiver(usbEvents, filter);
         }
-        appendLog("NURA LD36 Diagnostic v1.7.0: testar orientação real no início sem girar o app.");
+        appendLog("NURA LD36 Diagnostic v1.8.0: comparar manualmente VDAT 0 e 90 com FPS.");
         appendLog("Modo passivo: somente RX. Nenhum comando será enviado ao dongle.");
         appendLog("Feche o aplicativo Mirror original antes de conectar o LD36.");
         discoverAccessory();
@@ -196,7 +203,7 @@ public final class MainActivity extends Activity {
         TextView title = text("LD36 Diagnostic", 28, INK, Typeface.BOLD);
         title.setPadding(0, dp(7), 0, dp(5));
         root.addView(title);
-        TextView subtitle = text("VERSÃO 1.7.0 • ORIENTAÇÃO NATURAL", 13, ACCENT, Typeface.BOLD);
+        TextView subtitle = text("VERSÃO 1.8.0 • TESTE ÂNGULO 0°/90°", 13, ACCENT, Typeface.BOLD);
         root.addView(subtitle);
 
         LinearLayout statusCard = columnCard();
@@ -234,7 +241,8 @@ public final class MainActivity extends Activity {
             "VDAT ANGLE v1.4 — giro anterior (referência)",
             "VDAT INVERTIDO v1.5 — inverter orientação na TV",
             "PAISAGEM NA PARTIDA v1.6 — 1280x720 desde o início",
-            "ORIENTAÇÃO NATURAL v1.7 — sem forçar giro do aplicativo"
+            "ORIENTAÇÃO NATURAL v1.7 — sem forçar giro do aplicativo",
+            "VDAT 0° / 90° v1.8 — comparar rotação sem reiniciar vídeo"
         };
         ArrayAdapter<String> fitAdapter = new ArrayAdapter<>(this,
             android.R.layout.simple_spinner_item, fitting);
@@ -242,33 +250,37 @@ public final class MainActivity extends Activity {
         fitPicker.setAdapter(fitAdapter);
         fitPicker.setBackgroundColor(PANEL);
         // New mode is opt-in: known-working Original remains safe initial selection.
-        int mode = getPreferences(MODE_PRIVATE).getInt("capture_mode_v17",
+        int mode = getPreferences(MODE_PRIVATE).getInt("capture_mode_v18",
+            getPreferences(MODE_PRIVATE).getInt("capture_mode_v17",
             getPreferences(MODE_PRIVATE).getInt("capture_mode_v16",
             getPreferences(MODE_PRIVATE).getInt("capture_mode_v15",
-                getPreferences(MODE_PRIVATE).getInt("capture_mode_v13", 0))));
-        if (mode < 0 || mode > 7) mode = 0;
+                getPreferences(MODE_PRIVATE).getInt("capture_mode_v13", 0)))));
+        if (mode < 0 || mode > 8) mode = 0;
         fillTvSelected = mode == 1;
         directTvSelected = mode == 2;
         autoOriginalSelected = mode == 3;
-        vdatAngleSelected = mode == 4 || mode == 5 || mode == 6 || mode == 7;
+        vdatAngleSelected = mode == 4 || mode == 5 || mode == 6 || mode == 7 || mode == 8;
         invertedAngleSelected = mode == 5 || mode == 6 || mode == 7;
         landscapeStartSelected = mode == 6;
-        nativeOrientationStartSelected = mode == 7;
+        nativeOrientationStartSelected = mode == 7 || mode == 8;
+        manualAngleTestSelected = mode == 8;
         fitPicker.setSelection(mode);
         fitPicker.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                 boolean gpu = position == 1;
                 boolean direct = position == 2;
                 boolean auto = position == 3;
-                boolean angle = position == 4 || position == 5 || position == 6 || position == 7;
+                boolean angle = position == 4 || position == 5 || position == 6 || position == 7 || position == 8;
                 boolean inverted = position == 5 || position == 6 || position == 7;
                 boolean landscape = position == 6;
-                boolean nativeOrientation = position == 7;
+                boolean nativeOrientation = position == 7 || position == 8;
+                boolean manualAngle = position == 8;
                 boolean changed = fillTvSelected != gpu ||
                     directTvSelected != direct ||
                     autoOriginalSelected != auto || vdatAngleSelected != angle ||
                     invertedAngleSelected != inverted || landscapeStartSelected != landscape ||
-                    nativeOrientationStartSelected != nativeOrientation;
+                    nativeOrientationStartSelected != nativeOrientation ||
+                    manualAngleTestSelected != manualAngle;
                 fillTvSelected = gpu;
                 directTvSelected = direct;
                 autoOriginalSelected = auto;
@@ -276,26 +288,37 @@ public final class MainActivity extends Activity {
                 invertedAngleSelected = inverted;
                 landscapeStartSelected = landscape;
                 nativeOrientationStartSelected = nativeOrientation;
-                getPreferences(MODE_PRIVATE).edit().putInt("capture_mode_v17", position).apply();
+                manualAngleTestSelected = manualAngle;
+                getPreferences(MODE_PRIVATE).edit().putInt("capture_mode_v18", position).apply();
                 if (nativeOrientation && !running.get()) {
                     setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
                     appendLog("v1.7: orientação do aplicativo liberada. "+
                         "O codificador usará apenas a orientação física no início.");
                 }
                 if (changed) appendLog("Captura selecionada: " +
+                    (manualAngle ? "v1.8 ANGULO MANUAL - video permanece no mesmo codec; toque 0/90" :
                     (nativeOrientation ? "v1.7 NATURAL - escolhe codec pelo display REAL no início; não força rotação" :
                     (landscape ? "PAISAGEM NA PARTIDA v1.6 - 1280x720 inicial, sem troca ao vivo" :
                     (inverted ? "VDAT INVERTIDO v1.5 - 0/90 trocados" :
                     (angle ? "VDAT ANGLE v1.4 - mapeamento anterior" :
                         (auto ? "AUTO ORIGINAL v1.1 (sujeito a congelar)" :
                             (direct ? "TV DIRETO v1.0 (sem imagem no teste)" :
-                                (gpu ? "GPU experimental anterior" : "Original v0.4"))))))) +
+                                (gpu ? "GPU experimental anterior" : "Original v0.4")))))))) +
                     ". Valido apenas na proxima sessao.");
             }
             @Override public void onNothingSelected(AdapterView<?> parent) { }
         });
         addToRoot(root, fitPicker, 7);
         addToRoot(root, videoButton, 12);
+        Button testAngle0 = button("VDAT 0° (v1.8)", PANEL, INK);
+        Button testAngle90 = button("VDAT 90° (v1.8)", PANEL, INK);
+        LinearLayout angleButtons = new LinearLayout(this);
+        angleButtons.setOrientation(LinearLayout.HORIZONTAL);
+        addButton(angleButtons, testAngle0);
+        addButton(angleButtons, testAngle90);
+        addToRoot(root, angleButtons, 8);
+        testAngle0.setOnClickListener(v -> chooseManualVdatAngle(0));
+        testAngle90.setOnClickListener(v -> chooseManualVdatAngle(90));
         Button rotateButton = button("↻ GIRAR IMAGEM DA TV 90°", PANEL, INK);
         addToRoot(root, rotateButton, 8);
         Button resetGeometryButton = button("REDEFINIR PROPORÇÃO / GIRO 0°", PANEL, INK);
@@ -384,7 +407,7 @@ public final class MainActivity extends Activity {
         exportText.setOnClickListener(v -> requestExport(false));
         exportBin.setOnClickListener(v -> requestExport(true));
 
-        TextView note = text("v1.7 ORIENTAÇÃO NATURAL: não gira a interface à força. A captura começa em 720x1280 se o Android estiver vertical ou 1280x720 se horizontal. Para testar paisagem, gire ANTES de autorizar a gravação; não altere a orientação até encerrar. Não troca MediaCodec, Surface nem SPS/PPS durante a sessão. Modo v1.5 mantém a referência vertical. Envie TXT e foto da TV. Áudio indisponível.", 12, MUTED, Typeface.NORMAL);
+        TextView note = text("v1.8 VDAT MANUAL: inicia no tamanho da tela Android sem forçar orientação. Com celular na horizontal ANTES da autorização, confirme 1280x720 no TXT. Durante uma mesma sessão toque VDAT 0° e fotografe a TV; depois toque VDAT 90° e fotografe de novo. Não gire o celular no teste. O codificador permanece fixo; registra quadros enviados por segundo a cada ~5s. Preserva os modos anteriores. Áudio indisponível.", 12, MUTED, Typeface.NORMAL);
         note.setPadding(0, dp(17), 0, 0);
         root.addView(note);
     }
@@ -434,6 +457,26 @@ public final class MainActivity extends Activity {
         }
         connectButton.setEnabled(accessory != null && !running.get());
         stopButton.setEnabled(running.get());
+    }
+
+    private void chooseManualVdatAngle(int degrees) {
+        if (!manualAngleTestSelected || !videoStarted || !running.get()) {
+            appendLog("v1.8: selecione VDAT 0° / 90° e inicie espelhamento para mudar o angulo.");
+            return;
+        }
+        int previous = manualVdatAngle;
+        manualVdatAngle = degrees;
+        vdatAngleDegrees = degrees;
+        if (previous != degrees) vdatAngleChanges++;
+        vdatAngleAwaitFirstPacket = degrees;
+        appendLog("v1.8 ANGULO MANUAL: "+previous+" -> "+degrees+
+            " graus. Codec fixo="+profileInitialEncoderWidth+"x"+profileInitialEncoderHeight+
+            "; USB e MediaCodec inalterados; verificacao visual necessaria.");
+        // Request an IDR after changing metadata; do not recreate the codec.
+        Intent refresh = new Intent(this, MirrorProjectionService.class);
+        refresh.setAction(MirrorProjectionService.ACTION_REFRESH);
+        try { startService(refresh); }
+        catch (RuntimeException e) { appendLog("v1.8: falha solicitando IDR: "+e.getMessage()); }
     }
 
     private void requestVideoConsent() {
@@ -528,6 +571,12 @@ public final class MainActivity extends Activity {
                 intent.putExtra(MirrorProjectionService.EXTRA_AUTO_ORIGINAL, autoOriginalSelected);
                 intent.putExtra(MirrorProjectionService.EXTRA_VDAT_ANGLE, vdatAngleSelected);
                 vdatAngleDegrees=0;
+                manualVdatAngle=0;
+                profileInitialEncoderWidth=encoderW;
+                profileInitialEncoderHeight=encoderH;
+                fpsWindowStartMs=0L;
+                fpsWindowPackets=0L;
+                fpsWindowBytes=0L;
                 vdatAngleChanges=0;
                 vdatAngleFrames0=0;vdatAngleFrames90=0;
                 vdatAngleFrames180=0;vdatAngleFrames270=0;
@@ -535,12 +584,13 @@ public final class MainActivity extends Activity {
                 vdatAngleAwaitFirstPacket=-1;
                 appendLog("Tela real: " + actualW + "x" + actualH + " -> encoder "
                     + encoderW + "x" + encoderH
-                    + (nativeOrientationStartSelected ? " | v1.7 PERFIL NATURAL - SEM GIRO FORÇADO" :
+                    + (manualAngleTestSelected ? " | v1.8 VDAT MANUAL 0/90 - CODEC FIXO" :
+                      (nativeOrientationStartSelected ? " | v1.7 PERFIL NATURAL - SEM GIRO FORÇADO" :
                       (landscapeStartSelected ? " | v1.6 PAISAGEM 1280x720 NA PARTIDA, SEM RECONFIGURAR" :
                         (vdatAngleSelected ? " | VDAT ANGLE - CODEC ORIGINAL FIXO" :
                         (autoOriginalSelected ? " | AUTO ORIGINAL v1.1 - CODIFICADOR DINAMICO" :
                             (directTvSelected ? " | TV DIRETO v1.0 (experimental falhou)" :
-                                (fillTvSelected ? " | GPU ANTIGA" : " | ORIGINAL v0.4")))))));
+                                (fillTvSelected ? " | GPU ANTIGA" : " | ORIGINAL v0.4"))))))));
                 projectionConsent = null; // MediaProjection consent token must be used once.
                 if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent);
                 else startService(intent);
@@ -682,6 +732,13 @@ public final class MainActivity extends Activity {
                 }
                 @Override public void onOrientation(int degrees,int width,int height) {
                     if(session!=generation || !videoStarted || !vdatAngleSelected) return;
+                    if (manualAngleTestSelected) {
+                        logFromWorker(session,"v1.8 ANDROID ORIENTACAO="+degrees+
+                            " fonte="+width+"x"+height+"; VDAT MANUAL="+manualVdatAngle+
+                            "; escolha do usuario prevalece.");
+                        vdatAngleDegrees=manualVdatAngle;
+                        return;
+                    }
                     final int outgoingAngle = invertedAngleSelected ?
                         ((degrees + 90) % 180 + (degrees / 180) * 180) : degrees;
                     vdatAngleDegrees=outgoingAngle;
@@ -796,6 +853,24 @@ public final class MainActivity extends Activity {
             if (video) {
                 videoFrames++;
                 videoBytes += data.length;
+                if (manualAngleTestSelected && !label.equals("VDAT_SPS_PPS")) {
+                    long now = android.os.SystemClock.elapsedRealtime();
+                    if (fpsWindowStartMs == 0L) fpsWindowStartMs = now;
+                    fpsWindowPackets++;
+                    fpsWindowBytes += data.length;
+                    long elapsed = now - fpsWindowStartMs;
+                    if (elapsed >= 5000L) {
+                        final double fps = fpsWindowPackets * 1000.0 / elapsed;
+                        final double kbps = fpsWindowBytes * 8.0 / elapsed;
+                        logFromWorker(session, String.format(Locale.US,
+                            "v1.8 TAXA TX: %.2f quadros/s, %.1f kbit/s, intervalo=%dms, angle=%d, codec=%dx%d",
+                            fps,kbps,elapsed,manualVdatAngle,
+                            profileInitialEncoderWidth,profileInitialEncoderHeight));
+                        fpsWindowStartMs = now;
+                        fpsWindowPackets = 0;
+                        fpsWindowBytes = 0;
+                    }
+                }
                 if (videoFrames <= 4 || videoFrames % 60 == 0 || label.equals("VDAT_IDR")) {
                     logFromWorker(session, "TX " + label + " len=" + data.length
                         + " totalH264=" + videoFrames + " bytesUSB=" + videoBytes);
@@ -834,6 +909,11 @@ public final class MainActivity extends Activity {
         activeScanRequested = false;
         videoModeRequested = false;
         projectionConsent = null;
+        if (manualAngleTestSelected && videoStarted) {
+            appendLog("v1.8 FIM: angle manual="+manualVdatAngle+
+                " codec="+profileInitialEncoderWidth+"x"+profileInitialEncoderHeight+
+                " pacotes="+videoFrames+" dadosUSB="+videoBytes);
+        }
         if (vdatAngleSelected && videoStarted) {
             appendLog("VDAT ANGLE RESUMO: frames0="+vdatAngleFrames0+
                 " frames90="+vdatAngleFrames90+
