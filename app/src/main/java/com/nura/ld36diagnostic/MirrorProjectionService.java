@@ -51,6 +51,7 @@ public final class MirrorProjectionService extends Service {
     public static final String EXTRA_DIRECT_TV = "direct_tv";
     public static final String EXTRA_AUTO_ORIGINAL = "auto_original";
     public static final String EXTRA_VDAT_ANGLE = "vdat_angle";
+    public static final String EXTRA_LIVE_NATIVE = "live_native_rotation";
     private static final int NOTIFICATION_ID = 36;
     private static final String CHANNEL = "ld36_projection";
     private final AtomicBoolean capturing = new AtomicBoolean(false);
@@ -70,6 +71,9 @@ public final class MirrorProjectionService extends Service {
     private volatile boolean directTvMode;
     private volatile boolean autoOriginalMode;
     private volatile boolean vdatAngleMode;
+    private volatile boolean liveNativeMode;
+    private int nativeSwitchEpoch;
+    private boolean nativePortraitAtStart;
     private volatile int lastRotationDegrees = -1;
     private volatile boolean switchingEncoder;
     private volatile boolean switchingInProgress;
@@ -189,6 +193,9 @@ public final class MirrorProjectionService extends Service {
             directTvMode = intent.getBooleanExtra(EXTRA_DIRECT_TV, false);
             autoOriginalMode = intent.getBooleanExtra(EXTRA_AUTO_ORIGINAL, false);
             vdatAngleMode = intent.getBooleanExtra(EXTRA_VDAT_ANGLE, false);
+            liveNativeMode = intent.getBooleanExtra(EXTRA_LIVE_NATIVE, false);
+            nativeSwitchEpoch++;
+            nativePortraitAtStart = height > width;
             lastRotationDegrees = -1;
             encoderWidth=width; encoderHeight=height;
             switchingEncoder=false;switchingInProgress=false;
@@ -285,6 +292,7 @@ public final class MirrorProjectionService extends Service {
             if (autoOriginalMode) {
                 handler.postDelayed(() -> refreshScreenDimensions("verificacao inicial AUTO ORIGINAL"), 1400);
             }
+            if (liveNativeMode) note("v2.3 LIVE EXPERIMENTAL: mesma sessao USB/MediaProjection; novo SPS/PPS pode nao ser aceito pela TV.");
             if (vdatAngleMode) {
                 handler.post(() -> refreshScreenDimensions("VDAT ANGLE inicial"));
                 handler.postDelayed(() -> refreshScreenDimensions("VDAT ANGLE verificacao"),1200);
@@ -335,6 +343,48 @@ public final class MirrorProjectionService extends Service {
         handler.post(() -> {
             if (!capturing.get() || display == null) return;
             if(width < 240 || height < 240 || width > 4096 || height > 4096)return;
+            if (liveNativeMode) {
+                // Experimental same-projection reconfiguration. No USB reconnect,
+                // no new MediaProjection token. This MAY NOT be accepted by the
+                // dongle decoder without re-negotiating STAR.
+                lastCaptureWidth=width;
+                lastCaptureHeight=height;
+                DisplayManager dm=(DisplayManager)getSystemService(DISPLAY_SERVICE);
+                Display physical=dm==null ? null : dm.getDisplay(Display.DEFAULT_DISPLAY);
+                int degrees=physical==null ? 0 : physical.getRotation()*90;
+                int desiredW = width >= height ? 1280 :
+                    Math.max(320,Math.min(720,Math.round((1280f*width/height)/16f)*16));
+                int desiredH = width >= height ?
+                    Math.max(320,Math.min(720,Math.round((1280f*height/width)/16f)*16)) : 1280;
+                VideoSink sink=receiver;
+                if(sink!=null)sink.onOrientation(degrees,width,height);
+                if(desiredW==encoderWidth && desiredH==encoderHeight) {
+                    note("v2.3 LIVE: fonte="+width+"x"+height+
+                        " codec ja corresponde="+encoderWidth+"x"+encoderHeight);
+                    requestKeyframe();
+                    return;
+                }
+                final int epoch=++nativeSwitchEpoch;
+                note("v2.3 LIVE: mudanca "+reason+" origem="+width+"x"+height+
+                    " codec="+encoderWidth+"x"+encoderHeight+" alvo="+desiredW+"x"+desiredH+
+                    " (aguardando estabilizar 450ms, AOA preservado)");
+                handler.postDelayed(() -> {
+                    if(!capturing.get() || !liveNativeMode || epoch!=nativeSwitchEpoch ||
+                        switchingInProgress) return;
+                    Point physicalSize=new Point();
+                    DisplayManager m=(DisplayManager)getSystemService(DISPLAY_SERVICE);
+                    Display current=m==null ? null : m.getDisplay(Display.DEFAULT_DISPLAY);
+                    if(current==null)return;
+                    current.getRealSize(physicalSize);
+                    if((physicalSize.y > physicalSize.x)!=(desiredH > desiredW)) {
+                        note("v2.3 LIVE: giro transitório; codec preservado.");
+                        return;
+                    }
+                    note("v2.3 LIVE: tentativa de nova configuracao H264 sem encerrar AOA.");
+                    switchOriginalCodec(desiredW,desiredH);
+                },450);
+                return;
+            }
             if (vdatAngleMode) {
                 // The original H264 decoder configuration remains untouched.
                 // Only the documented 32-bit VDAT angle metadata is tested.
@@ -448,7 +498,7 @@ public final class MirrorProjectionService extends Service {
         final VirtualDisplay vd=display;
         final Thread previousWorker=worker;
         final int previousW=encoderWidth,previousH=encoderHeight;
-        note("AUTO ORIGINAL TROCA: preparando "+previousW+"x"+previousH+
+        note((liveNativeMode ? "v2.3 LIVE TROCA" : "AUTO ORIGINAL TROCA")+": preparando "+previousW+"x"+previousH+
             " -> "+newW+"x"+newH+
             "; LD36 ainda nao confirmou suporte a SPS/PPS dinamico.");
         new Thread(() -> {
@@ -630,6 +680,7 @@ public final class MirrorProjectionService extends Service {
 
     private synchronized void stopAll() {
         capturing.set(false);
+        nativeSwitchEpoch++;
         note("Rebinds: sucesso=" + successfulRebinds + ", falhas=" + failedRebinds+
             " | AUTO ORIGINAL mudancas="+codecSwitches+" eventos="+orientationEvents);
         if(displayManager!=null && orientationListener!=null) {
