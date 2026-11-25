@@ -1,3 +1,13 @@
+# NURA LD36 v2.2 — ambos os perfis validados, com passagem segura de sessão
+
+Este modo opt-in AUTO NATIVO v2.2 reúne as configurações confirmadas por teste físico: **vertical 576x1280 VDAT 90 (v2.1)**, bordas laterais corrigidas; **horizontal 1280x576 VDAT 90 (v1.9)**, orientação e YouTube em tela cheia corretos. O modo v2.0 anterior usava 720x1280 vertical, e por isso gerava bordas extras. Agora o STAR, VirtualDisplay e MediaCodec usam 576x1280 se a sessão inicia vertical, ou 1280xaltura proporcional se inicia horizontal. Não ocorre crop ou troca de codificador durante a sessão. Outros modos ficam intactos.
+
+**Limitação fundamental:** a rotação detectada termina a sessão após confirmar o novo estado, e o usuário deve tocar novamente ESPELHAR VÍDEO e permitir nova captura (MediaProjection single-use). Não há troca contínua sem interrupção. A v2.0 já apresentou travamento aparente ao girar; a v2.2 não promete resolver totalmente o problema visual ou retomar automaticamente. Testar fisicamente antes de declarar sucesso.
+
+**Teste:** selecionar AUTO NATIVO v2.2; iniciar vertical, confirmar `v2.2 STAR PERFIL: H264=576x1280`, imagem e bordas; girar para horizontal, observar aviso para nova autorização; tocar ESPELHAR VÍDEO novamente, confirmar H264 1280x576 e YouTube em tela cheia; repetir inverso. Tirar fotos e exportar TXT para cada sessão. Não mudar o seletor no meio da sessão. Se falhar, selecionar RETRATO NATIVO v2.1 ou PROPORÇÃO NATIVA v1.9.
+
+---
+
 # NURA LD36 v2.1 — experimento isolado de geometria vertical
 
 No teste físico da v2.0, o usuário confirmou bordas apenas laterais e excessivas na vertical, enquanto a v1.9 horizontal funciona corretamente. A passagem de orientação ainda pode congelar/parar, e a v2.1 NÃO modifica esta transição.
