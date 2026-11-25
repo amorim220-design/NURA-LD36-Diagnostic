@@ -72,6 +72,7 @@ public final class MainActivity extends Activity {
     private boolean directTvSelected;
     private boolean autoOriginalSelected;
     private boolean vdatAngleSelected;
+    private boolean invertedAngleSelected;
     private volatile int vdatAngleDegrees;
     private volatile int vdatAngleChanges;
     private volatile long vdatAngleFrames0, vdatAngleFrames90, vdatAngleFrames180, vdatAngleFrames270;
@@ -139,7 +140,7 @@ public final class MainActivity extends Activity {
         } else {
             registerReceiver(usbEvents, filter);
         }
-        appendLog("NURA LD36 Diagnostic v1.4.0: contadores TX VDAT para cada angulo.");
+        appendLog("NURA LD36 Diagnostic v1.5.0: teste orientacao invertida na TV.");
         appendLog("Modo passivo: somente RX. Nenhum comando será enviado ao dongle.");
         appendLog("Feche o aplicativo Mirror original antes de conectar o LD36.");
         discoverAccessory();
@@ -193,7 +194,7 @@ public final class MainActivity extends Activity {
         TextView title = text("LD36 Diagnostic", 28, INK, Typeface.BOLD);
         title.setPadding(0, dp(7), 0, dp(5));
         root.addView(title);
-        TextView subtitle = text("VERSÃO 1.4.0 • DIAGNÓSTICO ANGLE VDAT", 13, ACCENT, Typeface.BOLD);
+        TextView subtitle = text("VERSÃO 1.5.0 • ORIENTAÇÃO INVERTIDA", 13, ACCENT, Typeface.BOLD);
         root.addView(subtitle);
 
         LinearLayout statusCard = columnCard();
@@ -228,7 +229,8 @@ public final class MainActivity extends Activity {
             "GPU v0.9 — diagnóstico manual (distorção conhecida)",
             "TV DIRETO v1.0 — sem imagem (diagnóstico)",
             "AUTO ORIGINAL v1.1 — troca codec (congela, evitar)",
-            "VDAT ANGLE v1.4 — contador TX + giro no protocolo"
+            "VDAT ANGLE v1.4 — giro anterior (referência)",
+            "VDAT INVERTIDO v1.5 — inverter orientação na TV"
         };
         ArrayAdapter<String> fitAdapter = new ArrayAdapter<>(this,
             android.R.layout.simple_spinner_item, fitting);
@@ -236,32 +238,38 @@ public final class MainActivity extends Activity {
         fitPicker.setAdapter(fitAdapter);
         fitPicker.setBackgroundColor(PANEL);
         // New mode is opt-in: known-working Original remains safe initial selection.
-        int mode = getPreferences(MODE_PRIVATE).getInt("capture_mode_v13", 0);
-        if (mode < 0 || mode > 4) mode = 0;
+        int mode = getPreferences(MODE_PRIVATE).getInt("capture_mode_v15",
+            getPreferences(MODE_PRIVATE).getInt("capture_mode_v13", 0));
+        if (mode < 0 || mode > 5) mode = 0;
         fillTvSelected = mode == 1;
         directTvSelected = mode == 2;
         autoOriginalSelected = mode == 3;
-        vdatAngleSelected = mode == 4;
+        vdatAngleSelected = mode == 4 || mode == 5;
+        invertedAngleSelected = mode == 5;
         fitPicker.setSelection(mode);
         fitPicker.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                 boolean gpu = position == 1;
                 boolean direct = position == 2;
                 boolean auto = position == 3;
-                boolean angle = position == 4;
+                boolean angle = position == 4 || position == 5;
+                boolean inverted = position == 5;
                 boolean changed = fillTvSelected != gpu ||
                     directTvSelected != direct ||
-                    autoOriginalSelected != auto || vdatAngleSelected != angle;
+                    autoOriginalSelected != auto || vdatAngleSelected != angle ||
+                    invertedAngleSelected != inverted;
                 fillTvSelected = gpu;
                 directTvSelected = direct;
                 autoOriginalSelected = auto;
                 vdatAngleSelected = angle;
-                getPreferences(MODE_PRIVATE).edit().putInt("capture_mode_v13", position).apply();
+                invertedAngleSelected = inverted;
+                getPreferences(MODE_PRIVATE).edit().putInt("capture_mode_v15", position).apply();
                 if (changed) appendLog("Captura selecionada: " +
-                    (angle ? "VDAT ANGLE v1.3 - original e angulo em metadados" :
+                    (inverted ? "VDAT INVERTIDO v1.5 - 0/90 trocados" :
+                    (angle ? "VDAT ANGLE v1.4 - mapeamento anterior" :
                         (auto ? "AUTO ORIGINAL v1.1 (sujeito a congelar)" :
                             (direct ? "TV DIRETO v1.0 (sem imagem no teste)" :
-                                (gpu ? "GPU experimental anterior" : "Original v0.4")))) +
+                                (gpu ? "GPU experimental anterior" : "Original v0.4"))))) +
                     ". Valido apenas na proxima sessao.");
             }
             @Override public void onNothingSelected(AdapterView<?> parent) { }
@@ -356,7 +364,7 @@ public final class MainActivity extends Activity {
         exportText.setOnClickListener(v -> requestExport(false));
         exportBin.setOnClickListener(v -> requestExport(true));
 
-        TextView note = text("v1.4 TESTE VDAT ANGLE: conserva a captura e o codificador original v0.4, envia orientacao apenas no campo angle do pacote VDAT (0, 90, 180, 270). Nao muda resolucao nem renegocia STAR. A semantica do campo nao foi confirmada no LD36: imagem pode continuar vertical, deformada ou sumir. Envie TXT e foto da TV. Para uso normal selecione Original v0.4. Audio indisponivel.", 12, MUTED, Typeface.NORMAL);
+        TextView note = text("v1.5 TESTE VDAT INVERTIDO: conserva a captura e o codificador original v0.4, envia orientacao apenas no campo angle do pacote VDAT (0, 90, 180, 270). Nao muda resolucao nem renegocia STAR. A semantica do campo nao foi confirmada no LD36: imagem pode continuar vertical, deformada ou sumir. Envie TXT e foto da TV. Para uso normal selecione Original v0.4. Audio indisponivel.", 12, MUTED, Typeface.NORMAL);
         note.setPadding(0, dp(17), 0, 0);
         root.addView(note);
     }
@@ -468,7 +476,7 @@ public final class MainActivity extends Activity {
                 vdatAngleAwaitFirstPacket=-1;
                 appendLog("Tela real: " + actualW + "x" + actualH + " -> encoder "
                     + encoderW + "x" + encoderH
-                    + (vdatAngleSelected ? " | VDAT ANGLE v1.3 - CODEC ORIGINAL FIXO" :
+                    + (vdatAngleSelected ? " | VDAT ANGLE - CODEC ORIGINAL FIXO" :
                         (autoOriginalSelected ? " | AUTO ORIGINAL v1.1 - CODIFICADOR DINAMICO" :
                             (directTvSelected ? " | TV DIRETO v1.0 (experimental falhou)" :
                                 (fillTvSelected ? " | GPU ANTIGA" : " | ORIGINAL v0.4")))));
@@ -613,11 +621,15 @@ public final class MainActivity extends Activity {
                 }
                 @Override public void onOrientation(int degrees,int width,int height) {
                     if(session!=generation || !videoStarted || !vdatAngleSelected) return;
-                    vdatAngleDegrees=degrees;
+                    final int outgoingAngle = invertedAngleSelected ?
+                        ((degrees + 90) % 180 + (degrees / 180) * 180) : degrees;
+                    vdatAngleDegrees=outgoingAngle;
                     vdatAngleChanges++;
-                    vdatAngleAwaitFirstPacket=degrees;
-                    logFromWorker(session,"VDAT ANGLE PACKET: campo int32="+degrees+
-                        " graus, fonte="+width+"x"+height+
+                    vdatAngleAwaitFirstPacket=outgoingAngle;
+                    logFromWorker(session,"VDAT ANGLE PACKET: android="+degrees+
+                        " graus; enviado="+outgoingAngle+
+                        " graus, invertido="+invertedAngleSelected+
+                        ", fonte="+width+"x"+height+
                         "; transporte e MediaCodec originais inalterados.");
                 }
             });
