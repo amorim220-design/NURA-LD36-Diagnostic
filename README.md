@@ -1,3 +1,18 @@
+# NURA LD36 v3.2 — MODO HÍBRIDO SEGURO v2.2 + v2.7
+
+**Relato físico do usuário:** v2.2 forneceu imagem vertical perfeita; v2.7 na horizontal ficou boa e não travou durante o giro. A exigência final continua sendo manter retrato perfeito e paisagem preenchendo TV, com giro automático contínuo.
+
+**O que a v3.2 implementa AGORA:** novo modo opcional HÍBRIDO SEGURO que seleciona a captura nativa do v2.2 (largura ajustada ao telefone, H264 altura=1280) quando inicia em retrato; quando inicia em paisagem, seleciona o compositor GPU0 da v2.7 com H264 fixo 1280x576 VDAT90. Preserva todos os modos antigos e bloqueia os reprovados v2.3 e v2.5.
+
+**Limitação essencial:** a troca entre os dois perfis NÃO é contínua ainda. Ao girar, o aplicativo encerra a captura com cuidado, e o usuário precisa tocar ESPELHAR VÍDEO e autorizar novamente, preservando o mesmo protocolo usado pela v2.2. Isso evita a troca perigosa de MediaCodec durante a sessão que travou a v2.3. A conexão AOA não é forçada nem reconectada artificialmente. Não anunciar seamless nem qualidade confirmada de v3.2 sem teste físico.
+
+**Por que ainda não é contínuo:** a resposta STAR anuncia resolução ao iniciar o vídeo; o VDAT não carrega campo de resolução fora do SPS/PPS. O relatório do app original registra APP_ tipo 14 SET_RESOLUTION e tipo 55 RESOLUTION_LIST, mas não prova que eles renegociem H264 durante uma sessão existente. Não enviar estes comandos ao hardware antes de conhecer seu payload e semântica.
+
+**Teste opcional:** iniciar com celular vertical no modo HÍBRIDO SEGURO v3.2 e conferir texto; girar horizontal, observar parada segura e solicitar autorização nova; conferir se o novo perfil v2.7 mantém a paisagem proporcional. Se algo não funcionar, retornar ao modo v2.2 ou v2.6.
+
+**Próxima investigação:** verificar no código original a semântica de SET_RESOLUTION e RESOLUTION_LIST; testar apenas com parser/harness e emulador TCP, antes de qualquer troca ao vivo no dongle.
+
+---
 # v2.7 — RETRATO NÍTIDO GPU 90° (EXPERIMENTAL)
 
 Na v2.6, a imagem vertical permaneceu borrada mesmo com o aparelho parado. Causa geométrica verificada no código: fonte 1080×2400 é encaixada em H264 fixo 1280×576 com quad=0.2025x1.0, usando apenas cerca de 259 pixels de largura útil para o retrato. Depois a TV aumenta os pixels, prejudicando letras.
