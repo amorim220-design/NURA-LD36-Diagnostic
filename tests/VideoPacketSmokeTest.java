@@ -10,6 +10,16 @@ public final class VideoPacketSmokeTest {
         if (data[16]!='T'||data[17]!='A'||data[18]!='D'||data[19]!='V') throw new AssertionError("cmd");
         if (data[28]!=8 || data[32]!=0||data[35]!=1) throw new AssertionError("payload");
         if (!VideoPacket.isAnnexB(nal)) throw new AssertionError("AnnexB");
+        // VDAT angle occupies little-endian int32 at bytes 24..27.
+        for (int angle : new int[]{0,90,180,270}) {
+            byte[] rotated=VideoPacket.make(0x11223344,123456L,angle,nal);
+            int encoded=(rotated[24]&255)|((rotated[25]&255)<<8)|
+                ((rotated[26]&255)<<16)|((rotated[27]&255)<<24);
+            if(encoded!=angle)throw new AssertionError("VDAT angle mismatch: "+angle);
+            if(rotated.length!=data.length)throw new AssertionError("angle changed frame len");
+            for(int i=32;i<rotated.length;i++)
+                if(rotated[i]!=data[i])throw new AssertionError("angle modified AVC payload");
+        }
         boolean failed=false;
         try { VideoPacket.make(0,0,0,new byte[0]); } catch (IllegalArgumentException ex) {failed=true;}
         if (!failed) throw new AssertionError("empty data accepted");
