@@ -216,7 +216,7 @@ public final class MainActivity extends Activity {
         TextView title = text("LD36 Diagnostic", 28, INK, Typeface.BOLD);
         title.setPadding(0, dp(7), 0, dp(5));
         root.addView(title);
-        TextView subtitle = text("VERSÃO 3.3.0 • PESQUISA GIRO CONTÍNUO (BASE v3.2)", 13, ACCENT, Typeface.BOLD);
+        TextView subtitle = text("VERSÃO 3.4.0 • OBSERVADOR DE RENEGOCIAÇÃO (BASE v3.2)", 13, ACCENT, Typeface.BOLD);
         root.addView(subtitle);
 
         LinearLayout statusCard = columnCard();

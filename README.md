@@ -1,3 +1,19 @@
+# NURA LD36 v3.4 — Observação de renegociação, sem comandos experimentais
+
+**Objetivo:** rotação contínua preservando v2.2 vertical (576x1280) e v2.7 horizontal (1280x576). **Ainda não implementada.**
+
+**Evidência física:** v3.2 reproduz os dois perfis com qualidade aprovada, porém ao girar a captura é encerrada e deve-se tocar ESPELHAR VÍDEO e autorizar novamente. A v2.3 travou na troca de MediaCodec em uma sessão viva; portanto esta pesquisa NÃO faz live codec swap nem altera a conexão USB AOA.
+
+**Base documental:** laudo `PROTOCOLO-MIRROR.md` do APK original recuperado por Jiagu (19/11/2026), que descreve `STAR` (resposta app->dongle 48B, vídeo width/height em [20..23]), `VDAT` (H264 Annex-B e ângulo; sem campo próprio de largura/altura), e tipos de mensagem APP_ `SET_RESOLUTION`=14 / `RESOLUTION_LIST`=55. Esses tipos NÃO significam que mudança de SPS/PPS ou codec ao vivo seja suportada. A validação antiga é via emulador TCP, não USB físico nem decoder real.
+
+**Implementado nesta versão:** `ActiveProtocolSession` conta `STAR_RX`, `STAR_repetidos`, `STAR_dim_mudou`, mensagens APP_ tipo 14 e 55 (resposta ou pedido), com logs prefixados `v3.4 OBSERVADOR`. A resposta pré-existente a STAR permanece inalterada. As mensagens APP_ de resolução são apenas reconhecidas e **não provocam transmissão nova**. Os testes injetam uma sessão em memória, enviam STAR duplicado, STAR com dimensões novas, APP_ tipo 14 fragmentado e tipo 55 resposta, e verificam os contadores e ausência de TX adicional.
+
+**Limites:** observar renegociação de STAR é necessário mas não suficiente para comprovar decoder aceitar SPS/PPS novos e IDR, nem prova que o firmware suporta trocar perfil sem reiniciar MediaProjection. Não ativar troca ao vivo até testar o contrato completo da sessão. A v3.4 NÃO resolve o clique adicional.
+
+**Procedimento recomendado:** continuar usando a v3.2 aprovada. Não há necessidade de novo teste na TV para esta versão. Teste adicional de firmware real só após a segurança da renegociação ser fundamentada em código original ou captura de protocolo sem comandos desconhecidos.
+
+---
+
 # v3.3 — Pesquisa de rotação contínua sem regressão (não é correção automática)
 
 Esta é uma iteração de **engenharia e testes de transição**, construída a partir da v3.2 aprovada fisicamente. Não altera ângulos GPU, encoder nem resolução ativa e não envia comandos novos ao LD36.

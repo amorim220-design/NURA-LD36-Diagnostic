@@ -34,7 +34,40 @@ public final class ActiveProtocolSmokeTest {
         session.accept(star,32);
         assertTrue(out.size()==4 && out.get(3).length==48,"STAR response");
         assertTrue(session.summary().contains("STAR=true"),"state");
+        // A repeat STAR is still acknowledged by the existing protocol, but
+        // is never interpreted as proof that the remote decoder can switch SPS.
+        byte[] sameStar=star.clone();
+        session.accept(sameStar,32);
+        assertTrue(out.size()==5 && session.summary().contains("STAR_repetidos=1"),
+                "repeat STAR counted without new command");
+        byte[] changedStar=star.clone();
+        changedStar[20]=0x40;changedStar[21]=0x02; // 576
+        changedStar[22]=0;changedStar[23]=0x05;   // 1280
+        session.accept(changedStar,32);
+        assertTrue(out.size()==6 && session.summary().contains("STAR_dim_mudou=1"),
+                "changed STAR dimensions observed without codec switch");
+        // APP_ (length-prefix=payload length) with message type 14 and 55.
+        byte[] setResolution=appPacket(14);
+        byte[] listResolution=appPacket(0x80|55);
+        session.accept(setResolution,7);
+        session.accept(java.util.Arrays.copyOfRange(setResolution,7,22),15);
+        session.accept(listResolution,22);
+        assertTrue(out.size()==6,"observation-only APP packets do not send");
+        assertTrue(session.summary().contains("APP_resolucao_14=1"),"SET_RESOLUTION observed");
+        assertTrue(session.summary().contains("APP_lista_55=1"),"RESOLUTION_LIST observed");
+        boolean found=false;
+        for(String note:notes) if(note.contains("NAO prova decoder aceitar"))found=true;
+        assertTrue(found,"unverified renegotiation explicitly recorded");
         System.out.println("Active protocol smoke test passed");
+    }
+    private static byte[] appPacket(int type) {
+        byte[] out=new byte[22];
+        out[0]=22; // packet total length LE
+        System.arraycopy(new byte[]{'_','P','P','A'},0,out,4,4);
+        out[16]=2; // inner APP packet data bytes
+        out[20]=1; // 1 subsequent byte (type, no payload)
+        out[21]=(byte)type;
+        return out;
     }
     private static void assertTrue(boolean ok,String message) {
         if (!ok) throw new AssertionError(message);
