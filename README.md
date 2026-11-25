@@ -1,3 +1,15 @@
+# v2.7 — RETRATO NÍTIDO GPU 90° (EXPERIMENTAL)
+
+Na v2.6, a imagem vertical permaneceu borrada mesmo com o aparelho parado. Causa geométrica verificada no código: fonte 1080×2400 é encaixada em H264 fixo 1280×576 com quad=0.2025x1.0, usando apenas cerca de 259 pixels de largura útil para o retrato. Depois a TV aumenta os pixels, prejudicando letras.
+
+Hipótese experimental: rotacionar 90° o conteúdo de retrato na GPU **antes** da codificação fixa, transformando 1080×2400 em 2400×1080 orientados, que ocupam o canvas inteiro 1280×576. O dongle permanece com VDAT=90 durante toda sessão e pode rotacionar o quadro depois da decodificação. É uma tentativa de recuperar a resolução útil sem reiniciar MediaCodec, refazer consentimento MediaProjection ou reconectar AOA. Possível falha: LD36 pode aplicar a rotação de modo incompatível e resultar em imagem deitada/invertida. Por isso o modo RETRATO NÍTIDO v2.7 é opcional; v2.6 permanece inalterada.
+
+Implementação: ScreenCropRenderer.updateCapturedSize(width,height,degrees) troca *atomicamente* setDefaultBufferSize e UV/quad no mesmo HandlerThread EGL. No início da sessão em retrato, `setCorrectionDegrees(90)` antes de criar VirtualDisplay; nas rotações seguintes, service usa GPU90 só quando sourceH>sourceW, GPU0 na paisagem. Debounce rápido, codec H264 1280×576 e VDAT90 iguais v2.6. Não segura quadros como v2.5.
+
+Teste físico recomendado: abrir na VERTICAL primeiro e checar SE o texto está legível e SE orientação está correta; se estiver deitada/invertida ou não aparecer, PARAR e voltar a GIRO RÁPIDO v2.6, sem repetir rotações. Só se retrato estiver correto, verificar horizontal→vertical uma vez; enviar log TXT e foto. **Compilar não comprova a interpretação visual do LD36**.
+
+---
+
 # NURA LD36 v2.6 — giro rápido sem congelamento de quadros (experimental)
 
 A v2.5 falhou fisicamente: depois do giro, a imagem ficou congelada e o log deixou de registrar vídeo, embora o USB continuasse. Revertido o mecanismo de retenção de quadros. Esta versão parte **diretamente da v2.4**, última com rotação contínua confirmada na TV, porém com efeito transitório de imagem pequena.
