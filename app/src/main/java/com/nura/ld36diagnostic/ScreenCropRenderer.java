@@ -85,8 +85,21 @@ public final class ScreenCropRenderer implements AutoCloseable {
      * Synchronous to avoid an old-size buffer being rebound during rotation.
      */
     public boolean updateCapturedSize(int width, int height) {
+        return updateCapturedSize(width,height,0);
+    }
+
+    /**
+     * Atomically change the source buffer geometry and its UV orientation.
+     * Fixes portrait content being downscaled into a narrow vertical stripe
+     * before the dongle applies its own VDAT 90° orientation.
+     *
+     * On v2.7 portrait 1080x2400 -> rotated 2400x1080 -> H264 1280x576
+     * instead of portrait 1080x2400 -> 259x576 narrow letterbox.
+     */
+    public boolean updateCapturedSize(int width, int height, int degrees) {
+        final int normalized=RotationGeometry.normalize(degrees);
         if (closed || width < 240 || height < 240 || width > 4096 || height > 4096) return false;
-        if (width == displayWidth && height == displayHeight) return true;
+        if (width == displayWidth && height == displayHeight && normalized==correctionDegrees) return true;
         Handler h = handler;
         if (h == null) return false;
         CountDownLatch ready = new CountDownLatch(1);
@@ -97,7 +110,7 @@ public final class ScreenCropRenderer implements AutoCloseable {
                 sourceTexture.setDefaultBufferSize(width, height);
                 // A prior manual correction applies to the previous screen
                 // orientation; do not carry it into a newly rotated buffer.
-                correctionDegrees=0;
+                correctionDegrees=normalized;
                 displayWidth = width;
                 displayHeight = height;
                 updateGeometry(width,height);
