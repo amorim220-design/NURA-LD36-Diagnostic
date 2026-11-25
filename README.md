@@ -1,3 +1,15 @@
+# NURA LD36 v1.6 — experimento com perfil paisagem somente no início
+
+**Evidência física:** v1.5 em retrato exibiu a interface corretamente com pequenas bordas laterais. Em paisagem depois de iniciar captura em retrato, a imagem ficou de lado, ocupando apenas uma faixa da TV, e a resolução H264 permaneceu 720x1280; trocar codificador ao vivo na v1.1 provocou congelamento e tela preta.
+
+**Hipótese isolada v1.6:** evitar troca de resolução durante sessão. Novo modo opt-in **PAISAGEM NA PARTIDA v1.6** solicita orientação horizontal ao Android ANTES de pedir autorização MediaProjection. Depois verifica que display real está horizontal, captura H264 diretamente em 1280x720 e mantém essa resolução por toda a sessão; o campo VDAT angle usa mapeamento inverso da v1.5 (Android 90° => campo 0°). Mantém USB AOA/handshake e caminho direto Original da v0.4, sem GPU e sem reconfiguração dinâmica.
+
+**Teste físico:** abrir v1.6 -> selecionar PAISAGEM NA PARTIDA -> tocar ESPELHAR -> aceitar permissão -> confirmar log `Tela real: 2400x1080 -> encoder 1280x720` (dimensões reais podem variar) -> fotografar imagem na TV. NÃO girar o celular no meio da sessão; o foco é verificar primeiro se inicialização com codec paisagem é aceita pelo dongle e produz imagem 16:9, sem cortes. Se ficar preta, encerrar sessão e selecionar Original ou VDAT INVERTIDO v1.5. O modo retrato aprovado não foi alterado.
+
+**Limitações e critérios:** respeitar Android, que pode recusar orientação forçada por configuração de dispositivo. A prova de compilação NÃO comprova imagem na TV. Se o STAR/decoder não aceitar 1280x720 inicial, será preciso rever negociação ou composição. Se houver imagem mas geometria incorreta, obter nova foto e TXT para comparar.
+
+---
+
 # v1.5 — teste controlado de orientação INVERTIDA na TV
 
 Pedido do usuário após foto com bordas claras em cima/baixo e pretas nas laterais: inverter o comportamento da orientação da TV. O modo adicional **VDAT INVERTIDO v1.5** modifica só o valor do campo int32 `angle` dos pacotes VDAT:
