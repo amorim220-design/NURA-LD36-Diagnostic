@@ -1,3 +1,16 @@
+# NURA LD36 v3.5 — MODO HÍBRIDO COM PEDIDO AUTOMÁTICO DE PERMISSÃO
+
+**Objetivo do usuário:** imagem vertical da v2.2, horizontal da v2.7, continuidade do giro da v2.6, sem necessidade de tocar no botão ESPELHAR.
+
+**O que foi efetivamente implementado:** modo v3.5 opt-in usando os dois perfis v3.2 aprovados e debounce de detecção de mudança de orientação existente. Após girar e confirmar orientação, interrompe o vídeo de forma segura como v3.2. Se a Activity ainda estiver visível, inicia automaticamente a janela oficial do Android `MediaProjectionManager.createScreenCaptureIntent()` para que o usuário autorize uma nova sessão, sem precisar tocar ESPELHAR; após autorização o fluxo original abre AOA e anuncia o novo perfil. Se não estiver visível ou houver nova sessão, não dispara pedido e mantém comportamento manual.
+
+**Limitações importantes:** ainda é obrigatório aceitar a janela do Android. O stream NÃO permanece contínuo e a conexão USB reabre como v3.2; isto reduz apenas a intervenção de abrir manualmente a permissão. O mecanismo de v2.6 foi reaproveitado na detecção/estabilização, mas a continuidade H264 e AOA não pode ser simplesmente transplantada entre perfis com dimensões diferentes. Nenhum codec live-switch nem comando LD36 não documentado é enviado. A v2.3 travou no hardware ao trocar MediaCodec durante uma transmissão; um salto direto seria inseguro.
+
+**Segurança/regressão:** v3.2 original segue selecionável no item HÍBRIDO v3.2. O modo v3.5 é diferente e opcional, não é acionado em segundo plano, não reutiliza token da MediaProjection e respeita recusa de permissão pelo usuário. Testes automatizados cobrem compilação, mas o resultado na TV ainda não está validado.
+
+**Próxima etapa para rotação realmente contínua:** construir e testar isoladamente mecanismo de troca entre encoder `576×1280` e `1280×576`, GPU, SPS/PPS e sincronização do decoder do LD36. Precisará de evidência de suporte do dongle à renegociação enquanto a sessão se mantém ativa. A v3.2 permanece baseline.
+
+---
 # NURA LD36 v3.2 — MODO HÍBRIDO SEGURO v2.2 + v2.7
 
 **Relato físico do usuário:** v2.2 forneceu imagem vertical perfeita; v2.7 na horizontal ficou boa e não travou durante o giro. A exigência final continua sendo manter retrato perfeito e paisagem preenchendo TV, com giro automático contínuo.
