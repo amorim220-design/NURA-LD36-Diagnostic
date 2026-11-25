@@ -1,3 +1,11 @@
+# NURA LD36 v2.3 — rotação sem encerrar AOA (prova de viabilidade EXPERIMENTAL)
+
+Modo novo opt-in **GIRO CONTÍNUO v2.3**, não substitui os modos v1.9/v2.1/v2.2 aprovados. Um consentimento Android inicia MediaProjection/VirtualDisplay e H264 nas dimensões comprovadas: 576x1280 em retrato ou 1280x576 em paisagem, VDAT 90. Quando Android muda orientação, o serviço aguarda 450ms para estabilização e tenta desligar SOMENTE o codificador antigo, criar MediaCodec novo, anexar sua Surface ao MESMO VirtualDisplay, redimensionar a superfície e enviar SPS/PPS/IDR via o MESMO canal AOA. Não reconecta USB nem pede nova autorização. Não modifica o protocolo STAR para o fluxo seguinte; o LD36 pode ou não aceitar as mudanças no decodificador, causando imagem travada ou preta. Esta é uma investigação e NÃO rotação contínua validada.
+
+**Teste físico obrigatório:** conectar LD36 e iniciar em vertical; confirmar imagem estável. Girar para horizontal e verificar se a TV efetivamente acompanha, se fica congelada/preta ou se volta ao Mirror; exportar TXT procurando `v2.3 LIVE`, `AUTO ORIGINAL TROCA OK` ou `FALHOU`, `H264 enviado`, `VDAT_SPS_PPS`; repetir horizontal->vertical se seguro. **Parar o teste** se a TV travar; selecionar AUTO NATIVO v2.2 para recuperar. A compilação em CI apenas confirma sintaxe e smoke tests sem dongle.
+
+---
+
 # NURA LD36 v2.2 — ambos os perfis validados, com passagem segura de sessão
 
 Este modo opt-in AUTO NATIVO v2.2 reúne as configurações confirmadas por teste físico: **vertical 576x1280 VDAT 90 (v2.1)**, bordas laterais corrigidas; **horizontal 1280x576 VDAT 90 (v1.9)**, orientação e YouTube em tela cheia corretos. O modo v2.0 anterior usava 720x1280 vertical, e por isso gerava bordas extras. Agora o STAR, VirtualDisplay e MediaCodec usam 576x1280 se a sessão inicia vertical, ou 1280xaltura proporcional se inicia horizontal. Não ocorre crop ou troca de codificador durante a sessão. Outros modos ficam intactos.
