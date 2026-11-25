@@ -1,3 +1,15 @@
+# NURA LD36 v1.7 — orientação natural na partida (teste físico)
+
+Referência vertical: foto real enviada pelo usuário (2026-11-24) mostra a tela inteira centralizada com barras laterais corretas, sem deformação. Teste v1.6 forçou Activity na horizontal e apresentou distorção no aplicativo e na tela em paisagem, embora tenha proporcionado outro enquadramento melhor em certas condições verticais.
+
+**Mudança limitada:** modo opt-in ORIENTAÇÃO NATURAL v1.7 deixa o Android controlar orientação da Activity (SCREEN_ORIENTATION_UNSPECIFIED). Antes da permissão MediaProjection, orienta o usuário sobre como iniciar; após STAR, mede tamanho real do display e escolhe H264 fixo 720x1280 se vertical ou 1280x720 se horizontal. Mantém o fluxo direto MediaProjection/MediaCodec da família v0.4 e o mapeamento VDAT invertido da v1.5. Não altera resolução do codec durante a sessão (teste isolado). Mantém v1.5 e v1.6 como modos comparativos.
+
+**Teste preferencial:** manter a rotação automática do Android ativada, selecionar ORIENTAÇÃO NATURAL, escolher uma tela que gira realmente (app de vídeo/jogo), iniciar ESPELHAR, colocar telefone em horizontal ANTES de confirmar a permissão, confirmar no TXT `v1.7 PERFIL NATURAL: display real=... -> codec inicial=1280x720`. Se Android apresentar retrato, o codec iniciará em 720x1280 — isso não é uma validação horizontal. Registrar fotos da TV. Não girar depois durante o mesmo teste; parar/recomeçar para cada orientação.
+
+**Critérios de aprovação:** vídeo horizontal na TV sem ficar de lado, sem deformação ou cortes, estabilidade, sem mudar codec enquanto envia, logs 1280x720. **Não testado fisicamente**; correção automática ao girar em tempo real é posterior e não foi implementada.
+
+---
+
 # NURA LD36 v1.6 — experimento com perfil paisagem somente no início
 
 **Evidência física:** v1.5 em retrato exibiu a interface corretamente com pequenas bordas laterais. Em paisagem depois de iniciar captura em retrato, a imagem ficou de lado, ocupando apenas uma faixa da TV, e a resolução H264 permaneceu 720x1280; trocar codificador ao vivo na v1.1 provocou congelamento e tela preta.
