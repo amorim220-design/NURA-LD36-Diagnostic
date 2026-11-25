@@ -1,3 +1,17 @@
+# NURA LD36 v2.0 — alternância segura de perfis (experimental)
+
+**Evidências reais:** v1.5 retrato 720×1280, VDAT 90° funcionou com enquadramento correto, v1.9 paisagem 1280×576, VDAT 90° funcionou com pequena borda esquerda; YouTube em tela cheia aproveitou toda a televisão. v1.1 tentou trocar codificador em execução e congelou, e Android 14+ MediaProjection exige novo consentimento/tokens de uso único.
+
+**Novo modo opt-in:** `AUTO SEGURO v2.0 — vertical/horizontal por sessão`. No início lê as dimensões reais: se retrato negocia STAR e H.264 720×1280, VDAT 90°; se paisagem negocia STAR e H.264 1280×altura proporcional (2400×1080 → 1280×576), VDAT 90°. Não usa GPU, crop, reconfiguração do codificador, nem força orientação da Activity. Ao mudar a orientação de verdade, aguarda 850 ms, verifica o estado físico, para a sessão velha e informa para voltar ao app, tocar ESPELHAR VÍDEO e conceder **nova** autorização MediaProjection. Nunca reutiliza a permissão antiga. Se o giro for transitório, mantém a sessão. Fallback: escolher v1.5 (vertical) ou v1.9 (horizontal).
+
+**Importante:** isto automatiza detecção, seleção inicial dos perfis e interrupção segura ao girar, **não** a retomada automática; Android requer nova ação de consentimento e a troca sem parar o codec não foi comprovada. Não afirmar que a alternância sem interrupção já está funcionando. Testes manuais reais são necessários.
+
+**Teste:** selecionar AUTO SEGURO e iniciar em retrato; fotografar TV; abrir app horizontal real e girar, confirmar logs `v2.0 AUTO SEGURO` e `Nova orientação: toque ESPELHAR VÍDEO`; reabrir e conceder nova autorização; confirmar `1280x576`, VDAT 90°; YouTube horizontal em tela cheia; testar retorno ao retrato. Exportar TXT após cada sessão e fotos. Se não reiniciar, usar os modos anteriores. Em especial confirmar que o telefone não entrou em retrato temporariamente por sobreposição de permissão.
+
+**Critérios:** vídeo vertical correto, horizontal correto/preenchendo e parada sem travamento ao detectar mudança; necessidade de novo consentimento visível. Sem promessa de 100% automação.
+
+---
+
 # v1.9 — Experimento de proporção nativa na horizontal
 
 **Evidência física preservada**: v1.8, H.264 inicial 1280×720 e VDAT 90° exibiram a imagem na orientação horizontal correta na TV, mas com barras em todos os lados. v1.5 vertical exibiu imagem correta com barras laterais esperadas. Não há prova de que o receptor LD36 aceita H.264 de 1280×576 ou de que elimina barras com esta alteração.
