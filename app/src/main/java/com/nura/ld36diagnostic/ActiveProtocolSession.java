@@ -24,6 +24,14 @@ public final class ActiveProtocolSession {
     private boolean synced;
     private boolean startSeen;
     private boolean syncAcknowledged;
+    // Observations only. Counts incoming renegotiation-related packets without
+    // transmitting a new command or enabling an unverified live codec change.
+    private long starRequests;
+    private long repeatedStars;
+    private long changedStarParameters;
+    private int lastStarWidth=-1, lastStarHeight=-1;
+    private long resolutionControlPackets;
+    private long resolutionListPackets;
     private int unknownBytes;
     private int replies;
     private int requestedVideoWidth;
@@ -107,10 +115,31 @@ public final class ActiveProtocolSession {
             int type = pkt[21] & 0xff;
             sink.note(String.format(Locale.US, "RX APP_ tipo=0x%02X len=%d",type,pkt.length));
             if (type == 0x81) syncAcknowledged = true;
+            // APP_ [20] is MSGPacket body length; [21] is message type.
+            // 14=SET_RESOLUTION, 55=RESOLUTION_LIST per recovered original
+            // Mirror app protocol documentation. No payload assumptions.
+            int baseType=type & 0x7f;
+            if (baseType==14 || baseType==55) {
+                if (baseType==14) resolutionControlPackets++;
+                else resolutionListPackets++;
+                sink.note(String.format(Locale.US,
+                    "v3.4 OBSERVADOR APP_ RESOLUCAO: tipo=%d resposta=%s len=%d sem comando enviado",
+                    baseType, (type & 0x80)!=0, pkt.length));
+            }
         } else if ("RRIM".equals(tag) && pkt.length >= 32 && "RATS".equals(ascii(pkt,16,4))) {
             int width = get16(pkt,20), height = get16(pkt,22);
             int bitRate = get32(pkt,24), fps = get16(pkt,28);
             startSeen = true;
+            starRequests++;
+            if (starRequests>1) {
+                repeatedStars++;
+                boolean changed=width!=lastStarWidth || height!=lastStarHeight;
+                if(changed)changedStarParameters++;
+                sink.note("v3.4 OBSERVADOR STAR REPETIDO: anterior="+lastStarWidth+"x"+lastStarHeight+
+                    " novo="+width+"x"+height+" mudou="+changed+
+                    "; isto NAO prova decoder aceitar SPS/PPS dinamico");
+            }
+            lastStarWidth=width;lastStarHeight=height;
             sink.note(String.format(Locale.US, "RX STAR w=%d h=%d bitrate=%d fps=%d",width,height,bitRate,fps));
             if (!synced) {
                 sink.note("STAR sem SYNC anterior: resposta bloqueada.");
@@ -153,7 +182,12 @@ public final class ActiveProtocolSession {
         return "Ativo: heartbeats ecoados=" + echoedHeartbeats
              + " frames RX=" + rxFrames + " respostas TX=" + replies
              + " SYNC=" + synced + " ACK=" + syncAcknowledged
-             + " STAR=" + startSeen + " bytes sem framing=" + unknownBytes;
+             + " STAR=" + startSeen + " STAR_RX=" + starRequests
+             + " STAR_repetidos=" + repeatedStars
+             + " STAR_dim_mudou=" + changedStarParameters
+             + " APP_resolucao_14=" + resolutionControlPackets
+             + " APP_lista_55=" + resolutionListPackets
+             + " bytes sem framing=" + unknownBytes;
     }
 
     private byte[] frame(int len, String tag) {
