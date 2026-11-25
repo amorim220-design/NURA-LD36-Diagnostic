@@ -1,3 +1,15 @@
+# NURA LD36 v1.8 — teste VDAT manual e desempenho de envio
+
+Evidência física v1.7: Android 2400x1080, codec 1280x720, angle VDAT 0°, mas imagem TV girada/deformada. Log anterior: 209 quadros em aproximadamente 90s; não há prova de que o MediaCodec esteve gerando 30 fps contínuos, nem de que o dongle interpretou o campo VDAT como esperado.
+
+Modo opt-in **VDAT 0° / 90° v1.8**: inicia com orientação natural do Android; idealmente iniciar horizontal antes da autorização MediaProjection para obter codec fixo 1280x720. Dois botões `VDAT 0° (v1.8)` e `VDAT 90° (v1.8)` alteram apenas o ângulo de cabeçalho VDAT no mesmo fluxo, sem trocar resolução, Surface ou codificador e sem encerrar USB; solicita atualização de captura/IDR pelo serviço. Uma telemetria adicional relata quadros/s realmente transmitidos e taxa de bits por janelas de ~5s. Contadores existentes separados por ângulo são mantidos. Modo v1.5 vertical permanece disponível.
+
+**Procedimento:** selecionar v1.8, girar Android para horizontal (em app que permite paisagem) antes de aceitar permissão; confirmar no TXT `codec inicial=1280x720`; testar 0°, fotografar; tocar 90°, fotografar novamente; permanecer fisicamente na horizontal durante ambos os testes; exportar TXT. Teste de botões no app durante a sessão pode provocar overlay/captura diferente; preferir voltar ao mesmo conteúdo na TV após cada mudança. Só comparar enquanto ambos ângulos têm vídeo ativo.
+
+**Não comprovado ainda:** rotação correta na TV, escala, FPS, ausência de travamentos, manipulação de IDR, compatibilidade com Android 16. A compilação não substitui teste físico.
+
+---
+
 # NURA LD36 v1.7 — orientação natural na partida (teste físico)
 
 Referência vertical: foto real enviada pelo usuário (2026-11-24) mostra a tela inteira centralizada com barras laterais corretas, sem deformação. Teste v1.6 forçou Activity na horizontal e apresentou distorção no aplicativo e na tela em paisagem, embora tenha proporcionado outro enquadramento melhor em certas condições verticais.
