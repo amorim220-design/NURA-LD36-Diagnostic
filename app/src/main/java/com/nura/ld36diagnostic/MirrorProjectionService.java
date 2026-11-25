@@ -53,6 +53,7 @@ public final class MirrorProjectionService extends Service {
     public static final String EXTRA_VDAT_ANGLE = "vdat_angle";
     public static final String EXTRA_LIVE_NATIVE = "live_native_rotation";
     public static final String EXTRA_FIXED_CANVAS = "fixed_canvas_rotation";
+    public static final String EXTRA_SMOOTH_CANVAS = "smooth_canvas_rotation";
     private static final int NOTIFICATION_ID = 36;
     private static final String CHANNEL = "ld36_projection";
     private final AtomicBoolean capturing = new AtomicBoolean(false);
@@ -74,6 +75,7 @@ public final class MirrorProjectionService extends Service {
     private volatile boolean vdatAngleMode;
     private volatile boolean liveNativeMode;
     private volatile boolean fixedCanvasMode;
+    private volatile boolean smoothCanvasMode;
     private volatile int canvasResizeGeneration;
     private volatile boolean canvasResizeInFlight;
     private int nativeSwitchEpoch;
@@ -199,6 +201,7 @@ public final class MirrorProjectionService extends Service {
             vdatAngleMode = intent.getBooleanExtra(EXTRA_VDAT_ANGLE, false);
             liveNativeMode = intent.getBooleanExtra(EXTRA_LIVE_NATIVE, false);
             fixedCanvasMode = intent.getBooleanExtra(EXTRA_FIXED_CANVAS, false);
+            smoothCanvasMode = intent.getBooleanExtra(EXTRA_SMOOTH_CANVAS, false) && fixedCanvasMode;
             canvasResizeGeneration++;
             canvasResizeInFlight=false;
             nativeSwitchEpoch++;
@@ -357,6 +360,14 @@ public final class MirrorProjectionService extends Service {
                 if (width==lastCaptureWidth && height==lastCaptureHeight) return;
                 final int sequence=++canvasResizeGeneration;
                 final int targetW=width,targetH=height;
+                // Hold before debounce: suppress incorrectly scaled frames
+                // while the physical display and producer buffers disagree.
+                if(smoothCanvasMode && cropRenderer!=null) {
+                    cropRenderer.setRotationHold(true);
+                    note("v2.5 HOLD INICIO: congelar ultimo quadro proporcional na TV "+
+                        "durante transicao "+lastCaptureWidth+"x"+lastCaptureHeight+
+                        " -> "+targetW+"x"+targetH);
+                }
                 note("v2.4 CANVAS: detectou fonte "+width+"x"+height+
                     " via "+reason+"; mantendo encoder="+encoderWidth+"x"+encoderHeight+
                     " USB e MediaProjection abertos");
@@ -367,11 +378,17 @@ public final class MirrorProjectionService extends Service {
                     DisplayManager dm=(DisplayManager)getSystemService(DISPLAY_SERVICE);
                     Display physical=dm==null ? null:dm.getDisplay(Display.DEFAULT_DISPLAY);
                     Point actual=new Point();
-                    if(physical==null)return;
+                    if(physical==null) {
+                        if(smoothCanvasMode && cropRenderer!=null)
+                            cropRenderer.setRotationHold(false);
+                        return;
+                    }
                     physical.getRealSize(actual);
                     if(actual.x!=targetW || actual.y!=targetH) {
-                        note("v2.4 CANVAS: medidas transitórias ignoradas");
-                        refreshScreenDimensions("v2.4 rechecagem");
+                        note("v2.5 CANVAS: medidas transitórias ignoradas");
+                        if(smoothCanvasMode && cropRenderer!=null)
+                            cropRenderer.setRotationHold(false);
+                        refreshScreenDimensions("v2.5 rechecagem");
                         return;
                     }
                     canvasResizeInFlight=true;
@@ -394,16 +411,24 @@ public final class MirrorProjectionService extends Service {
                                 vd.resize(targetW,targetH,dpiValue);
                                 lastCaptureWidth=targetW;lastCaptureHeight=targetH;
                                 requestKeyframe();
-                                note("v2.4 CANVAS RECONFIGURADO: "+targetW+"x"+targetH+
+                                note((smoothCanvasMode ? "v2.5 CANVAS RECONFIGURADO" : "v2.4 CANVAS RECONFIGURADO")+
+                                    ": "+targetW+"x"+targetH+
                                     " dentro de H264 FIXO="+encoderWidth+"x"+encoderHeight+
                                     " | "+renderer.getMatrixDiagnostic());
                             } catch(Exception ex) {
                                 note("v2.4 CANVAS ERRO: "+ex.getClass().getSimpleName()+
                                     " "+ex.getMessage()+"; pare teste se a imagem congelar");
-                            } finally {canvasResizeInFlight=false;}
+                            } finally {
+                                canvasResizeInFlight=false;
+                                if(smoothCanvasMode) {
+                                    renderer.setRotationHold(false);
+                                    note("v2.5 HOLD LIBERADO: GPU com proporcao atualizada | "+
+                                        renderer.getHoldDiagnostic());
+                                }
+                            }
                         });
                     },"nura-v24-gpu-resize").start();
-                },450);
+                },smoothCanvasMode ? 260 : 450);
                 return;
             }
             if (liveNativeMode) {

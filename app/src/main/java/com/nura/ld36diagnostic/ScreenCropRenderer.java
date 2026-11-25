@@ -43,6 +43,13 @@ public final class ScreenCropRenderer implements AutoCloseable {
     private final Surface encoderSurface;
     private final int sourceWidth, sourceHeight, encodedWidth, encodedHeight;
     private volatile boolean closed;
+    // When the Android display rotates, do not present intermediate frames
+    // using the PREVIOUS quad/aspect ratio. The TV retains last valid frame.
+    private volatile boolean rotationHold;
+    private volatile long holdSinceUptimeMs;
+    private volatile int transitionHolds;
+    private volatile int transitionResumes;
+    private volatile int holdTimeouts;
     private volatile int rendered;
 
     private static java.nio.FloatBuffer asBuffer(float[] values) {
@@ -79,6 +86,26 @@ public final class ScreenCropRenderer implements AutoCloseable {
     }
 
     public Surface getCaptureSurface() { return sourceSurface; }
+
+    /**
+     * Nonblocking. The render thread checks this flag BEFORE sampling the next
+     * SurfaceTexture frame. No extra EGL thread or MediaCodec restart needed.
+     * Safety: auto-release after 2.5 seconds even if the resize fails.
+     */
+    public void setRotationHold(boolean hold) {
+        if (closed) return;
+        rotationHold = hold;
+        if (hold) {
+            holdSinceUptimeMs = android.os.SystemClock.uptimeMillis();
+            transitionHolds++;
+        } else {
+            transitionResumes++;
+        }
+    }
+    public String getHoldDiagnostic() {
+        return "hold="+rotationHold+" holds="+transitionHolds+
+            " resumes="+transitionResumes+" timeouts="+holdTimeouts;
+    }
 
     /**
      * Resize the consumer buffer BEFORE VirtualDisplay.resize/setSurface.
@@ -224,6 +251,13 @@ public final class ScreenCropRenderer implements AutoCloseable {
 
     private void render() {
         if(closed || sourceTexture==null)return;
+        if (rotationHold) {
+            long age=android.os.SystemClock.uptimeMillis()-holdSinceUptimeMs;
+            if (age < 2500L) return;
+            rotationHold=false;
+            holdTimeouts++;
+            android.util.Log.w("NURA-LD36","v2.5 HOLD TIMEOUT: liberando GPU após "+age+"ms");
+        }
         try {
             sourceTexture.updateTexImage();
             sourceTexture.getTransformMatrix(textureMatrix);
@@ -272,6 +306,7 @@ public final class ScreenCropRenderer implements AutoCloseable {
     }
     @Override public void close() {
         if(closed)return;
+        rotationHold=false;
         closed=true;
         if(handler!=null) {
             CountDownLatch released=new CountDownLatch(1);

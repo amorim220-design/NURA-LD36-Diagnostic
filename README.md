@@ -1,3 +1,13 @@
+# NURA LD36 v2.5 — GIRO SUAVE experimental (GPU frame hold)
+
+Relato físico v2.4: espelhamento contínuo permaneceu ativo e não travou, mas a imagem ficou **pequena temporariamente ao girar, antes de preencher a TV**. Logs comprovam que a GPU demorava ~0,9s entre a orientação Android e o resize final, transmitindo quadros intermediários. Problema distinto da v2.3, que trocava H264, cortava imagem e travava.
+
+v2.5 adiciona modo opt-in GIRO SUAVE: mantém exatamente o H264 1280x576 VDAT90, protocolo AOA, MediaCodec e MediaProjection da v2.4; ao detectar mudança de dimensões Android o compositor suspende apenas a apresentação de novos frames, deixando o último quadro válido na TV. Após um debounce de 260ms, atualiza SurfaceTexture buffer no thread GPU e VirtualDisplay fonte; então libera novos quadros proporcionais. Fail-safe de 2,5 segundos desativa hold se resize não completar. **Não garante rotação instantânea ou enquadramento vertical idêntico ao perfil v2.1**: a geometria de saída permanece 1280x576. Se falhar, o modo v2.4 ainda existe e o modo v2.3 continua bloqueado.
+
+Teste físico: em GIRO SUAVE v2.5, iniciar vertical e verificar imagem imóvel por segundos, girar horizontal e observar se há último quadro estável e depois transição direta para imagem no tamanho correto, sem encolher/crescer. Fazer o inverso, exportar TXT, procurar `v2.5 HOLD INICIO`, `v2.5 CANVAS RECONFIGURADO`, `v2.5 HOLD LIBERADO` e confirmar que não houve nova sessão USB ou SPS/PPS. Testes automáticos verificam somente a compilação; a TV é validação obrigatória.
+
+---
+
 # NURA LD36 v2.4 — CANVAS FIXO (EXPERIMENTAL)
 
 **Motivo:** v2.3 reconfigurou MediaCodec e VirtualDisplay com a captura aberta. Teste físico relatou imagem reduzida/cortada, travamento na rotação e falha na próxima captura. O modo v2.3 foi bloqueado no seletor para evitar repetição.
