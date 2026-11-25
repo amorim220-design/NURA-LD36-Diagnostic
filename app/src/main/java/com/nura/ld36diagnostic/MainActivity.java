@@ -352,7 +352,7 @@ public final class MainActivity extends Activity {
         exportText.setOnClickListener(v -> requestExport(false));
         exportBin.setOnClickListener(v -> requestExport(true));
 
-        TextView note = text("v1.1: AUTO ORIGINAL inicia com o motor v0.4 comprovado. Quando a tela gira, tenta substituir a Surface do MediaCodec e enviar novos SPS/PPS (720x1280 ↔ 1280x720). O LD36 pode nao aceitar resolucao dinamica: tela preta apos giro e um resultado util do teste. Exporte TXT. Original v0.4 preservado e recomendado para uso normal. Botoes Girar 90 sao apenas do GPU. Audio indisponivel.", 12, MUTED, Typeface.NORMAL);
+        TextView note = text("v1.3 TESTE VDAT ANGLE: conserva a captura e o codificador original v0.4, envia orientacao apenas no campo angle do pacote VDAT (0, 90, 180, 270). Nao muda resolucao nem renegocia STAR. A semantica do campo nao foi confirmada no LD36: imagem pode continuar vertical, deformada ou sumir. Envie TXT e foto da TV. Para uso normal selecione Original v0.4. Audio indisponivel.", 12, MUTED, Typeface.NORMAL);
         note.setPadding(0, dp(17), 0, 0);
         root.addView(note);
     }
