@@ -1,3 +1,15 @@
+# v1.3 — experimento isolado do campo de orientação VDAT (sem reinicialização do H.264)
+
+**Evidência na TV:** modo Original v0.4 mostra imagem; v1.0 direto horizontal 1280×720 não exibiu vídeo; v1.1 troca dinâmica H264 iniciou giro mas congelou e depois ficou preto. O código atual envia `VideoPacket.make(..., angle=0, ...)` em todos os quadros. O formato VDAT possui um `int32` na posição 24 para `angle`, mas sua semântica no hardware LD36 ainda **não está comprovada**.
+
+**Novo modo opt-in VDAT ANGLE:** inicia com a MESMA cadeia de captura/encoder Original v0.4, sem reinicializar MediaCodec, sem reanexar Surface, sem alterar SPS/PPS e sem renegociar STAR. Lê `Display.getRotation()` e envia o valor numérico 0, 90, 180 ou 270 no campo VDAT angle a partir do próximo quadro H264. Após a mudança, pede um IDR sem alterar codec. A interface registra `VDAT ANGLE ATUALIZADO` e `VDAT ANGLE PACKET`. Os testes unitários confirmam o campo em little-endian e verificam que a carga AVC não foi modificada.
+
+**Hipótese experimental, não solução confirmada:** alguns receptores podem ignorar este campo, interpretá-lo em outra unidade, ou mostrar conteúdo ainda fora de orientação; pode não aparecer imagem. O decoder pode permanecer configurado em retrato. O resultado visual em tela deve ser relatado pelo usuário antes de qualquer conclusão.
+
+**Procedimento:** instalar debug APK v1.3 -> em AJUSTE NA TV escolher VDAT ANGLE v1.3 -> iniciar na vertical e confirmar vídeo -> girar uma vez para paisagem -> observar se houve rotação/letterbox ou ficou preto -> voltar à vertical se ainda houver vídeo -> exportar TXT. O modo **Original v0.4** segue disponível e é a referência segura. Não insistir com modo AUTO ORIGINAL v1.1, que congelou após troca de SPS/PPS no hardware real. O áudio permanece fora do escopo.
+
+---
+
 # v1.2 — proteção contra dois leitores concorrentes do MediaCodec
 
 Evidência teste v1.1: primeira troca 720x1280 -> 1280x720 reportou êxito, porém retorno a 720x1280 teve `timeout aguardando encoder anterior`; um segundo timeout ocorreu em seguida. O código da v1.1 criava outro thread de leitura sem confirmar que o anterior havia encerrado, podendo disputar o mesmo MediaCodec.

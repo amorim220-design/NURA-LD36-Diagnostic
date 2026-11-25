@@ -50,6 +50,7 @@ public final class MirrorProjectionService extends Service {
     /** Single native Android projection scaling into the TV resolution. No secondary GL. */
     public static final String EXTRA_DIRECT_TV = "direct_tv";
     public static final String EXTRA_AUTO_ORIGINAL = "auto_original";
+    public static final String EXTRA_VDAT_ANGLE = "vdat_angle";
     private static final int NOTIFICATION_ID = 36;
     private static final String CHANNEL = "ld36_projection";
     private final AtomicBoolean capturing = new AtomicBoolean(false);
@@ -68,6 +69,8 @@ public final class MirrorProjectionService extends Service {
     private volatile int failedRebinds;
     private volatile boolean directTvMode;
     private volatile boolean autoOriginalMode;
+    private volatile boolean vdatAngleMode;
+    private volatile int lastRotationDegrees = -1;
     private volatile boolean switchingEncoder;
     private volatile boolean switchingInProgress;
     private volatile int encoderWidth, encoderHeight;
@@ -79,6 +82,7 @@ public final class MirrorProjectionService extends Service {
     public interface VideoSink {
         void onVideo(byte[] avc, boolean config, boolean keyframe, long millis) throws IOException;
         void onStatus(String message);
+        default void onOrientation(int rotationDegrees,int sourceWidth,int sourceHeight) { }
     }
 
     private static volatile VideoSink receiver;
@@ -150,10 +154,12 @@ public final class MirrorProjectionService extends Service {
                     // For TV-direct the codec Surface is fixed 1280x720. Keep
                     // Android's own compositing: resizing from this callback
                     // would break the TV aspect ratio.
-                    if (directTvMode || autoOriginalMode) {
+                    if (directTvMode || autoOriginalMode || vdatAngleMode) {
                         note((directTvMode ? "TV DIRETO CONTEUDO: " : "AUTO ORIGINAL CONTEUDO: ")+
                             width+"x"+height+
                             " encoder="+encoderWidth+"x"+encoderHeight);
+                        if (vdatAngleMode) updateCaptureDimensions(width,height,
+                            "MediaProjection angle probe");
                     } else {
                         updateCaptureDimensions(width,height,"MediaProjection");
                     }
@@ -182,6 +188,8 @@ public final class MirrorProjectionService extends Service {
             boolean crop = intent.getBooleanExtra(EXTRA_CROP, false);
             directTvMode = intent.getBooleanExtra(EXTRA_DIRECT_TV, false);
             autoOriginalMode = intent.getBooleanExtra(EXTRA_AUTO_ORIGINAL, false);
+            vdatAngleMode = intent.getBooleanExtra(EXTRA_VDAT_ANGLE, false);
+            lastRotationDegrees = -1;
             encoderWidth=width; encoderHeight=height;
             switchingEncoder=false;switchingInProgress=false;
             codecSwitches=0;orientationEvents=0;
@@ -250,6 +258,21 @@ public final class MirrorProjectionService extends Service {
                         displayManager.registerDisplayListener(orientationListener,handler);
                     note("AUTO ORIGINAL v1.1: captura DIRETA v0.4 inicial em " +
                         width+"x"+height+"; nova orientacao tentara trocar codec SPS/PPS.");
+                } else if (vdatAngleMode) {
+                    lastCaptureWidth=sourceWidth;lastCaptureHeight=sourceHeight;
+                    displayManager=(DisplayManager)getSystemService(DISPLAY_SERVICE);
+                    orientationListener=new DisplayManager.DisplayListener() {
+                        @Override public void onDisplayAdded(int id) { }
+                        @Override public void onDisplayRemoved(int id) { }
+                        @Override public void onDisplayChanged(int id) {
+                            if (id==Display.DEFAULT_DISPLAY)
+                                refreshScreenDimensions("VDAT display listener");
+                        }
+                    };
+                    if(displayManager!=null)
+                        displayManager.registerDisplayListener(orientationListener,handler);
+                    note("VDAT ANGLE v1.3: codec original fixo "+width+"x"+height+
+                        "; sem Surface resize, sem MediaCodec novo; metadado em teste.");
                 } else {
                     note("Modo Original 0.4: captura direta preservada.");
                 }
@@ -261,6 +284,10 @@ public final class MirrorProjectionService extends Service {
             }
             if (autoOriginalMode) {
                 handler.postDelayed(() -> refreshScreenDimensions("verificacao inicial AUTO ORIGINAL"), 1400);
+            }
+            if (vdatAngleMode) {
+                handler.post(() -> refreshScreenDimensions("VDAT ANGLE inicial"));
+                handler.postDelayed(() -> refreshScreenDimensions("VDAT ANGLE verificacao"),1200);
             }
             if (cropRenderer != null) {
                 note("Orientacao v0.8: UV manual=0, SurfaceTexture matriz preservada; " +
@@ -308,6 +335,34 @@ public final class MirrorProjectionService extends Service {
         handler.post(() -> {
             if (!capturing.get() || display == null) return;
             if(width < 240 || height < 240 || width > 4096 || height > 4096)return;
+            if (vdatAngleMode) {
+                // The original H264 decoder configuration remains untouched.
+                // Only the documented 32-bit VDAT angle metadata is tested.
+                DisplayManager manager=(DisplayManager)getSystemService(DISPLAY_SERVICE);
+                Display actual=manager==null ? null:manager.getDisplay(Display.DEFAULT_DISPLAY);
+                int degrees=0;
+                if(actual!=null) {
+                    switch(actual.getRotation()) {
+                        case Surface.ROTATION_90: degrees=90; break;
+                        case Surface.ROTATION_180: degrees=180; break;
+                        case Surface.ROTATION_270: degrees=270; break;
+                        default: degrees=0;
+                    }
+                }
+                boolean changed=degrees!=lastRotationDegrees;
+                lastCaptureWidth=width; lastCaptureHeight=height;
+                if(changed) {
+                    lastRotationDegrees=degrees;
+                    VideoSink sink=receiver;
+                    if(sink!=null)sink.onOrientation(degrees,width,height);
+                    note("VDAT ANGLE ATUALIZADO ("+reason+"): "+degrees+
+                        " graus, src="+width+"x"+height+
+                        " codec FIXO="+encoderWidth+"x"+encoderHeight+
+                        " sem trocar SPS/PPS, sem rebind.");
+                    requestKeyframe();
+                }
+                return;
+            }
             if(width == lastCaptureWidth && height == lastCaptureHeight)return;
             if (autoOriginalMode) {
                 int oldW=lastCaptureWidth, oldH=lastCaptureHeight;
