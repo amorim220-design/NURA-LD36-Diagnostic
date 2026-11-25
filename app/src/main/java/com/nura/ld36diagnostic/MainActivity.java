@@ -882,9 +882,9 @@ public final class MainActivity extends Activity {
             if (nativeAspectTestSelected || safeAutoHandoffSelected) {
                 android.graphics.Point actual = new android.graphics.Point();
                 getWindowManager().getDefaultDisplay().getRealSize(actual);
-                boolean portrait = actual.y >= actual.x;
-                int w = portrait ? 720 : 1280;
-                int h = portrait ? 1280 : nativeLandscapeHeight(actual.x,actual.y);
+                boolean starPortrait = actual.y >= actual.x;
+                int w = starPortrait ? 720 : 1280;
+                int h = starPortrait ? 1280 : nativeLandscapeHeight(actual.x,actual.y);
                 activeSession.setVideoOutput(w,h);
                 logFromWorker(session, (safeAutoHandoffSelected ? "v2.0" : "v1.9")+
                     " STAR PERFIL: H264="+w+"x"+h+
