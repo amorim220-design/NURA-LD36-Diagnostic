@@ -737,9 +737,9 @@ public final class MainActivity extends Activity {
                 intent.putExtra(MirrorProjectionService.EXTRA_FAST_CANVAS, fastCanvasSelected || (hybridNativeSelected && !portrait));
                 intent.putExtra(MirrorProjectionService.EXTRA_PORTRAIT_ROTATE, portraitRotateSelected || (hybridNativeSelected && !portrait));
                 vdatAngleDegrees=(nativeAspectTestSelected || safeAutoHandoffSelected ||
-                    nativePortraitAspectTestSelected || dualNativeSafeSelected || liveNativeSelected || fixedCanvasSelected) ? 90 : 0;
+                    nativePortraitAspectTestSelected || dualNativeSafeSelected || liveNativeSelected || fixedCanvasSelected || hybridNativeSelected) ? 90 : 0;
                 manualVdatAngle=(nativeAspectTestSelected || safeAutoHandoffSelected ||
-                    nativePortraitAspectTestSelected || dualNativeSafeSelected || liveNativeSelected || fixedCanvasSelected) ? 90 : 0;
+                    nativePortraitAspectTestSelected || dualNativeSafeSelected || liveNativeSelected || fixedCanvasSelected || hybridNativeSelected) ? 90 : 0;
                 initialProfilePortrait=portrait;
                 handoffPending=false;
                 profileInitialEncoderWidth=encoderW;
@@ -751,7 +751,7 @@ public final class MainActivity extends Activity {
                 vdatAngleFrames0=0;vdatAngleFrames90=0;
                 vdatAngleFrames180=0;vdatAngleFrames270=0;
                 vdatAngleConfigs=0;vdatAngleIdrs=0;
-                vdatAngleAwaitFirstPacket=(nativeAspectTestSelected || safeAutoHandoffSelected || nativePortraitAspectTestSelected || dualNativeSafeSelected || liveNativeSelected || fixedCanvasSelected) ? 90 : -1;
+                vdatAngleAwaitFirstPacket=(nativeAspectTestSelected || safeAutoHandoffSelected || nativePortraitAspectTestSelected || dualNativeSafeSelected || liveNativeSelected || fixedCanvasSelected || hybridNativeSelected) ? 90 : -1;
                 if(hybridNativeSelected) appendLog("v3.2 HIBRIDO CAPTURA: "+
                     (portrait ? "v2.2 RETRATO nativo" : "v2.7 PAISAGEM GPU0 H2641280x576")+
                     "; na proxima rotacao serao solicitados parada segura e novo consentimento.");
