@@ -1,3 +1,13 @@
+# NURA LD36 v2.1 — experimento isolado de geometria vertical
+
+No teste físico da v2.0, o usuário confirmou bordas apenas laterais e excessivas na vertical, enquanto a v1.9 horizontal funciona corretamente. A passagem de orientação ainda pode congelar/parar, e a v2.1 NÃO modifica esta transição.
+
+Hipótese: retrato anterior H264 720x1280 (9:16) difere da tela Android 1080x2400 (9:20), podendo introduzir barras no VirtualDisplay antes de o LD36 realizar outro encaixe. O modo opt-in RETRATO NATIVO v2.1 usa H264/VirtualDisplay/STAR 576x1280 (9:20) e VDAT 90 desde a partida, sem GPU, crop, reinicialização dinâmica ou alteração USB. Na horizontal o perfil comprovado v1.9 permanece disponível.
+
+Teste: selecionar RETRATO NATIVO v2.1, deixar telefone vertical antes da autorização, não girar, conferir no TXT v2.1 STAR PERFIL H264=576x1280, VDAT 90 e H264 transmitido. Tirar foto da TV e comparar bordas laterais com v2.0. Se imagem preta ou deformada, voltar ao perfil v2.0 ou v1.5. A resolução 576x1280 ainda não foi validada no LD36, e barras proporcionais normais permanecerão.
+
+---
+
 # NURA LD36 v2.0 — alternância segura de perfis (experimental)
 
 **Evidências reais:** v1.5 retrato 720×1280, VDAT 90° funcionou com enquadramento correto, v1.9 paisagem 1280×576, VDAT 90° funcionou com pequena borda esquerda; YouTube em tela cheia aproveitou toda a televisão. v1.1 tentou trocar codificador em execução e congelou, e Android 14+ MediaProjection exige novo consentimento/tokens de uso único.
