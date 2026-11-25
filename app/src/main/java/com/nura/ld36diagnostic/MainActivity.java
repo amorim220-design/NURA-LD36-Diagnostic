@@ -73,6 +73,10 @@ public final class MainActivity extends Activity {
     private boolean autoOriginalSelected;
     private boolean vdatAngleSelected;
     private volatile int vdatAngleDegrees;
+    private volatile int vdatAngleChanges;
+    private volatile long vdatAngleFrames0, vdatAngleFrames90, vdatAngleFrames180, vdatAngleFrames270;
+    private volatile long vdatAngleConfigs, vdatAngleIdrs;
+    private volatile int vdatAngleAwaitFirstPacket = -1;
     private volatile boolean videoStarted;
     private volatile int videoMagic;
     private Intent projectionConsent;
@@ -135,7 +139,7 @@ public final class MainActivity extends Activity {
         } else {
             registerReceiver(usbEvents, filter);
         }
-        appendLog("NURA LD36 Diagnostic v1.3.0: teste ANGLE sem troca do encoder.");
+        appendLog("NURA LD36 Diagnostic v1.4.0: contadores TX VDAT para cada angulo.");
         appendLog("Modo passivo: somente RX. Nenhum comando será enviado ao dongle.");
         appendLog("Feche o aplicativo Mirror original antes de conectar o LD36.");
         discoverAccessory();
@@ -189,7 +193,7 @@ public final class MainActivity extends Activity {
         TextView title = text("LD36 Diagnostic", 28, INK, Typeface.BOLD);
         title.setPadding(0, dp(7), 0, dp(5));
         root.addView(title);
-        TextView subtitle = text("VERSÃO 1.3.0 • TESTE METADADO VDAT", 13, ACCENT, Typeface.BOLD);
+        TextView subtitle = text("VERSÃO 1.4.0 • DIAGNÓSTICO ANGLE VDAT", 13, ACCENT, Typeface.BOLD);
         root.addView(subtitle);
 
         LinearLayout statusCard = columnCard();
@@ -224,7 +228,7 @@ public final class MainActivity extends Activity {
             "GPU v0.9 — diagnóstico manual (distorção conhecida)",
             "TV DIRETO v1.0 — sem imagem (diagnóstico)",
             "AUTO ORIGINAL v1.1 — troca codec (congela, evitar)",
-            "VDAT ANGLE v1.3 — motor Original + giro no protocolo (teste)"
+            "VDAT ANGLE v1.4 — contador TX + giro no protocolo"
         };
         ArrayAdapter<String> fitAdapter = new ArrayAdapter<>(this,
             android.R.layout.simple_spinner_item, fitting);
@@ -352,7 +356,7 @@ public final class MainActivity extends Activity {
         exportText.setOnClickListener(v -> requestExport(false));
         exportBin.setOnClickListener(v -> requestExport(true));
 
-        TextView note = text("v1.3 TESTE VDAT ANGLE: conserva a captura e o codificador original v0.4, envia orientacao apenas no campo angle do pacote VDAT (0, 90, 180, 270). Nao muda resolucao nem renegocia STAR. A semantica do campo nao foi confirmada no LD36: imagem pode continuar vertical, deformada ou sumir. Envie TXT e foto da TV. Para uso normal selecione Original v0.4. Audio indisponivel.", 12, MUTED, Typeface.NORMAL);
+        TextView note = text("v1.4 TESTE VDAT ANGLE: conserva a captura e o codificador original v0.4, envia orientacao apenas no campo angle do pacote VDAT (0, 90, 180, 270). Nao muda resolucao nem renegocia STAR. A semantica do campo nao foi confirmada no LD36: imagem pode continuar vertical, deformada ou sumir. Envie TXT e foto da TV. Para uso normal selecione Original v0.4. Audio indisponivel.", 12, MUTED, Typeface.NORMAL);
         note.setPadding(0, dp(17), 0, 0);
         root.addView(note);
     }
@@ -457,6 +461,11 @@ public final class MainActivity extends Activity {
                 intent.putExtra(MirrorProjectionService.EXTRA_AUTO_ORIGINAL, autoOriginalSelected);
                 intent.putExtra(MirrorProjectionService.EXTRA_VDAT_ANGLE, vdatAngleSelected);
                 vdatAngleDegrees=0;
+                vdatAngleChanges=0;
+                vdatAngleFrames0=0;vdatAngleFrames90=0;
+                vdatAngleFrames180=0;vdatAngleFrames270=0;
+                vdatAngleConfigs=0;vdatAngleIdrs=0;
+                vdatAngleAwaitFirstPacket=-1;
                 appendLog("Tela real: " + actualW + "x" + actualH + " -> encoder "
                     + encoderW + "x" + encoderH
                     + (vdatAngleSelected ? " | VDAT ANGLE v1.3 - CODEC ORIGINAL FIXO" :
@@ -573,6 +582,31 @@ public final class MainActivity extends Activity {
                     byte[] packet = VideoPacket.make(videoMagic, millis,
                         vdatAngleSelected ? vdatAngleDegrees : 0, avc);
                     transmitUsb(packet, config ? "VDAT_SPS_PPS" : keyframe ? "VDAT_IDR" : "VDAT_P", session, output, targetTx, true);
+                    if(vdatAngleSelected) {
+                        final int transmittedAngle=vdatAngleDegrees;
+                        if(config) vdatAngleConfigs++;
+                        else {
+                            if(transmittedAngle==90)vdatAngleFrames90++;
+                            else if(transmittedAngle==180)vdatAngleFrames180++;
+                            else if(transmittedAngle==270)vdatAngleFrames270++;
+                            else vdatAngleFrames0++;
+                        }
+                        if(keyframe)vdatAngleIdrs++;
+                        if(vdatAngleAwaitFirstPacket==transmittedAngle) {
+                            vdatAngleAwaitFirstPacket=-1;
+                            logFromWorker(session,"VDAT ANGLE CONFIRMACAO TX: primeiro pacote com angulo "+
+                                transmittedAngle+" enviado, tipo="+(config ? "SPS/PPS" : keyframe ? "IDR" : "P")+
+                                "; nao comprova exibicao na TV.");
+                        }
+                        long count=vdatAngleFrames0+vdatAngleFrames90+
+                            vdatAngleFrames180+vdatAngleFrames270;
+                        if(!config && count>0 && count%300==0)
+                            logFromWorker(session,"VDAT ANGLE CONTADORES: frames0="+vdatAngleFrames0+
+                                " frames90="+vdatAngleFrames90+
+                                " frames180="+vdatAngleFrames180+
+                                " frames270="+vdatAngleFrames270+
+                                " idr="+vdatAngleIdrs+" transicoes="+vdatAngleChanges);
+                    }
                 }
                 @Override public void onStatus(String message) {
                     logFromWorker(session, message);
@@ -580,6 +614,8 @@ public final class MainActivity extends Activity {
                 @Override public void onOrientation(int degrees,int width,int height) {
                     if(session!=generation || !videoStarted || !vdatAngleSelected) return;
                     vdatAngleDegrees=degrees;
+                    vdatAngleChanges++;
+                    vdatAngleAwaitFirstPacket=degrees;
                     logFromWorker(session,"VDAT ANGLE PACKET: campo int32="+degrees+
                         " graus, fonte="+width+"x"+height+
                         "; transporte e MediaCodec originais inalterados.");
@@ -725,6 +761,15 @@ public final class MainActivity extends Activity {
         activeScanRequested = false;
         videoModeRequested = false;
         projectionConsent = null;
+        if (vdatAngleSelected && videoStarted) {
+            appendLog("VDAT ANGLE RESUMO: frames0="+vdatAngleFrames0+
+                " frames90="+vdatAngleFrames90+
+                " frames180="+vdatAngleFrames180+
+                " frames270="+vdatAngleFrames270+
+                " configs="+vdatAngleConfigs+" idr="+vdatAngleIdrs+
+                " mudancas="+vdatAngleChanges+
+                "; contagem local, nao comprova exibicao na TV.");
+        }
         stopVideoService();
         if (!running.get() && descriptor == null) return;
         running.set(false);
