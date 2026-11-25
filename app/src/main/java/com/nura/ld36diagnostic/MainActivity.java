@@ -79,6 +79,7 @@ public final class MainActivity extends Activity {
     private boolean nativeAspectTestSelected;
     private boolean safeAutoHandoffSelected;
     private boolean nativePortraitAspectTestSelected;
+    private boolean dualNativeSafeSelected;
     private volatile boolean initialProfilePortrait;
     private volatile boolean handoffPending;
     private volatile int handoffTargetSession;
@@ -210,7 +211,7 @@ public final class MainActivity extends Activity {
         TextView title = text("LD36 Diagnostic", 28, INK, Typeface.BOLD);
         title.setPadding(0, dp(7), 0, dp(5));
         root.addView(title);
-        TextView subtitle = text("VERSÃO 2.1.0 • RETRATO PROPORCIONAL", 13, ACCENT, Typeface.BOLD);
+        TextView subtitle = text("VERSÃO 2.2.0 • AUTO NATIVO SEGURO", 13, ACCENT, Typeface.BOLD);
         root.addView(subtitle);
 
         LinearLayout statusCard = columnCard();
@@ -252,7 +253,8 @@ public final class MainActivity extends Activity {
             "VDAT 0° / 90° v1.8 — comparar rotação sem reiniciar vídeo",
             "PROPORÇÃO NATIVA v1.9 — H264 20:9 + VDAT 90°",
             "AUTO SEGURO v2.0 — vertical/horizontal por sessão",
-            "RETRATO NATIVO v2.1 — testar largura 20:9"
+            "RETRATO NATIVO v2.1 — testar largura 20:9",
+            "AUTO NATIVO v2.2 — perfis aprovados + giro seguro"
         };
         ArrayAdapter<String> fitAdapter = new ArrayAdapter<>(this,
             android.R.layout.simple_spinner_item, fitting);
@@ -260,40 +262,43 @@ public final class MainActivity extends Activity {
         fitPicker.setAdapter(fitAdapter);
         fitPicker.setBackgroundColor(PANEL);
         // New mode is opt-in: known-working Original remains safe initial selection.
-        int mode = getPreferences(MODE_PRIVATE).getInt("capture_mode_v21",
+        int mode = getPreferences(MODE_PRIVATE).getInt("capture_mode_v22",
+            getPreferences(MODE_PRIVATE).getInt("capture_mode_v21",
             getPreferences(MODE_PRIVATE).getInt("capture_mode_v20",
             getPreferences(MODE_PRIVATE).getInt("capture_mode_v19",
             getPreferences(MODE_PRIVATE).getInt("capture_mode_v18",
             getPreferences(MODE_PRIVATE).getInt("capture_mode_v17",
             getPreferences(MODE_PRIVATE).getInt("capture_mode_v16",
             getPreferences(MODE_PRIVATE).getInt("capture_mode_v15",
-                getPreferences(MODE_PRIVATE).getInt("capture_mode_v13", 0))))))));
-        if (mode < 0 || mode > 11) mode = 0;
+                getPreferences(MODE_PRIVATE).getInt("capture_mode_v13", 0)))))))));
+        if (mode < 0 || mode > 12) mode = 0;
         fillTvSelected = mode == 1;
         directTvSelected = mode == 2;
         autoOriginalSelected = mode == 3;
-        vdatAngleSelected = mode == 4 || mode == 5 || mode == 6 || mode == 7 || mode == 8 || mode == 9 || mode == 10 || mode == 11;
+        vdatAngleSelected = mode >= 4 && mode <= 12;
         invertedAngleSelected = mode == 5 || mode == 6 || mode == 7;
         landscapeStartSelected = mode == 6;
-        nativeOrientationStartSelected = mode == 7 || mode == 8 || mode == 9 || mode == 10 || mode == 11;
+        nativeOrientationStartSelected = mode >= 7 && mode <= 12;
         manualAngleTestSelected = mode == 8;
         nativeAspectTestSelected = mode == 9;
         safeAutoHandoffSelected = mode == 10;
         nativePortraitAspectTestSelected = mode == 11;
+        dualNativeSafeSelected = mode == 12;
         fitPicker.setSelection(mode);
         fitPicker.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                 boolean gpu = position == 1;
                 boolean direct = position == 2;
                 boolean auto = position == 3;
-                boolean angle = position == 4 || position == 5 || position == 6 || position == 7 || position == 8 || position == 9 || position == 10 || position == 11;
+                boolean angle = position >= 4 && position <= 12;
                 boolean inverted = position == 5 || position == 6 || position == 7;
                 boolean landscape = position == 6;
-                boolean nativeOrientation = position == 7 || position == 8 || position == 9 || position == 10 || position == 11;
+                boolean nativeOrientation = position >= 7 && position <= 12;
                 boolean manualAngle = position == 8;
                 boolean nativeAspect = position == 9;
                 boolean safeAuto = position == 10;
                 boolean nativePortrait = position == 11;
+                boolean dualNative = position == 12;
                 boolean changed = fillTvSelected != gpu ||
                     directTvSelected != direct ||
                     autoOriginalSelected != auto || vdatAngleSelected != angle ||
@@ -301,7 +306,8 @@ public final class MainActivity extends Activity {
                     nativeOrientationStartSelected != nativeOrientation ||
                     manualAngleTestSelected != manualAngle || nativeAspectTestSelected != nativeAspect ||
                     safeAutoHandoffSelected != safeAuto ||
-                    nativePortraitAspectTestSelected != nativePortrait;
+                    nativePortraitAspectTestSelected != nativePortrait ||
+                    dualNativeSafeSelected != dualNative;
                 fillTvSelected = gpu;
                 directTvSelected = direct;
                 autoOriginalSelected = auto;
@@ -313,13 +319,15 @@ public final class MainActivity extends Activity {
                 nativeAspectTestSelected = nativeAspect;
                 safeAutoHandoffSelected = safeAuto;
                 nativePortraitAspectTestSelected = nativePortrait;
-                getPreferences(MODE_PRIVATE).edit().putInt("capture_mode_v21", position).apply();
+                dualNativeSafeSelected = dualNative;
+                getPreferences(MODE_PRIVATE).edit().putInt("capture_mode_v22", position).apply();
                 if (nativeOrientation && !running.get()) {
                     setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
                     appendLog("v1.7: orientação do aplicativo liberada. "+
                         "O codificador usará apenas a orientação física no início.");
                 }
                 if (changed) appendLog("Captura selecionada: " +
+                    (dualNative ? "v2.2 AUTO NATIVO: retrato 576x1280, paisagem 1280x576; novo consentimento após giro" :
                     (nativePortrait ? "v2.1 RETRATO NATIVO - H264 proporcional sem escala dupla" :
                     (safeAuto ? "v2.0 AUTO SEGURO - seleciona perfil inicial e pede nova permissao ao girar" :
                     (nativeAspect ? "v1.9 PROPORCAO NATIVA - VDAT 90, H264 altura proporcional" :
@@ -330,7 +338,7 @@ public final class MainActivity extends Activity {
                     (angle ? "VDAT ANGLE v1.4 - mapeamento anterior" :
                         (auto ? "AUTO ORIGINAL v1.1 (sujeito a congelar)" :
                             (direct ? "TV DIRETO v1.0 (sem imagem no teste)" :
-                                (gpu ? "GPU experimental anterior" : "Original v0.4"))))))))))) +
+                                (gpu ? "GPU experimental anterior" : "Original v0.4")))))))))))) +
                     ". Valido apenas na proxima sessao.");
             }
             @Override public void onNothingSelected(AdapterView<?> parent) { }
@@ -434,7 +442,7 @@ public final class MainActivity extends Activity {
         exportText.setOnClickListener(v -> requestExport(false));
         exportBin.setOnClickListener(v -> requestExport(true));
 
-        TextView note = text("v2.1 RETRATO NATIVO: teste isolado das bordas laterais excessivas. Em Android 1080x2400 vertical, inicia H264 576x1280 e VDAT 90. A proporção da tela é preservada sem barras incorporadas na VirtualDisplay 720x1280. Não altera o modo horizontal comprovado da v1.9, nem a passagem de orientação da v2.0. Para testar: coloque telefone na vertical antes da autorização, não gire, fotografe a televisão e exporte TXT. Se falhar, selecione AUTO SEGURO v2.0. Áudio indisponível.", 12, MUTED, Typeface.NORMAL);
+        TextView note = text("v2.2 AUTO NATIVO SEGURO: seleciona RETRATO 576x1280 (validado v2.1) ou HORIZONTAL 1280x576 (validado v1.9), sempre com VDAT 90. Ao girar, identifica a nova orientação e interrompe a sessão antiga após confirmação; tocar novamente ESPELHAR VÍDEO e autorizar uma nova captura Android. Sem mudança dinâmica de codec, sem reutilizar autorização. O espelhamento contínuo sem interrupção ainda NÃO funciona. Outros modos permanecem para recuperação; exporte TXT e fotografe TV. Áudio indisponível.", 12, MUTED, Typeface.NORMAL);
         note.setPadding(0, dp(17), 0, 0);
         root.addView(note);
     }
@@ -529,17 +537,18 @@ public final class MainActivity extends Activity {
     // Therefore a physical orientation switch ends the old capture and
     // requires a fresh user tap to begin the other, independently negotiated profile.
     private void scheduleSafeOrientationHandoff(final int session, final boolean targetPortrait) {
-        if (!safeAutoHandoffSelected || handoffPending || !videoStarted || !running.get()) return;
+        if (!(safeAutoHandoffSelected || dualNativeSafeSelected) || handoffPending || !videoStarted || !running.get()) return;
         if (initialProfilePortrait == targetPortrait) return;
         handoffPending = true;
         handoffTargetSession = session;
         handoffTargetPortrait = targetPortrait;
-        appendLog("v2.0 AUTO SEGURO: mudança de orientação detectada. "+
+        appendLog((dualNativeSafeSelected ? "v2.2 AUTO NATIVO" : "v2.0 AUTO SEGURO")+
+            ": mudança de orientação detectada. "+
             "Confirmando estado estável antes de parar o perfil antigo.");
         mainHandler.postDelayed(() -> {
             if (!handoffPending || handoffTargetSession != generation ||
                 session != generation || !running.get() || !videoStarted ||
-                !safeAutoHandoffSelected) {
+                !(safeAutoHandoffSelected || dualNativeSafeSelected)) {
                 handoffPending = false;
                 return;
             }
@@ -549,18 +558,19 @@ public final class MainActivity extends Activity {
             handoffPending = false;
             if (stillPortrait != handoffTargetPortrait ||
                 stillPortrait == initialProfilePortrait) {
-                appendLog("v2.0 AUTO SEGURO: giro transitório ignorado; mantendo vídeo.");
+                appendLog("AUTO GIRO: estado atual divergiu do evento inicial; captura preservada.");
                 return;
             }
-            appendLog("v2.0 AUTO SEGURO: perfil atual "+
+            appendLog((dualNativeSafeSelected ? "v2.2 AUTO NATIVO" : "v2.0 AUTO SEGURO")+
+                ": perfil atual "+
                 (initialProfilePortrait ? "VERTICAL" : "HORIZONTAL")+
                 " não corresponde ao Android "+(stillPortrait ? "VERTICAL" : "HORIZONTAL")+
                 ". Encerrando sessão sem trocar MediaCodec em execução.");
             stopCapture();
             setStatus("Nova orientação: toque ESPELHAR VÍDEO", WARNING);
-            appendLog("v2.0 AÇÃO NECESSÁRIA: volte ao app e toque ESPELHAR VÍDEO "+
+            appendLog("v2.2 AÇÃO NECESSÁRIA: volte ao app e toque ESPELHAR VÍDEO "+
                 "para autorizar nova captura no perfil "+
-                (stillPortrait ? "VERTICAL 720x1280" : "HORIZONTAL 1280x576")+
+                (stillPortrait ? (dualNativeSafeSelected ? "VERTICAL 576x1280" : "VERTICAL 720x1280") : "HORIZONTAL 1280x576")+
                 ". Android exige nova permissão; não reutilizamos token nem forçamos USB.");
         }, 850);
     }
@@ -652,9 +662,10 @@ public final class MainActivity extends Activity {
                     stopCapture();
                     return;
                 }
-                int encoderW = nativePortraitAspectTestSelected ? nativePortraitWidth(actualW,actualH) :
+                int encoderW = (nativePortraitAspectTestSelected || (dualNativeSafeSelected && portrait)) ?
+                    nativePortraitWidth(actualW,actualH) :
                     ((fillTvSelected || directTvSelected) ? 1280 : (portrait ? 720 : 1280));
-                int encoderH = (nativeAspectTestSelected || (safeAutoHandoffSelected && !portrait))
+                int encoderH = (nativeAspectTestSelected || ((safeAutoHandoffSelected || dualNativeSafeSelected) && !portrait))
                     ? nativeLandscapeHeight(actualW, actualH) :
                     ((fillTvSelected || directTvSelected) ? 720 : (portrait ? 1280 : 720));
                 Intent intent = new Intent(this, MirrorProjectionService.class);
@@ -671,9 +682,9 @@ public final class MainActivity extends Activity {
                 intent.putExtra(MirrorProjectionService.EXTRA_AUTO_ORIGINAL, autoOriginalSelected);
                 intent.putExtra(MirrorProjectionService.EXTRA_VDAT_ANGLE, vdatAngleSelected);
                 vdatAngleDegrees=(nativeAspectTestSelected || safeAutoHandoffSelected ||
-                    nativePortraitAspectTestSelected) ? 90 : 0;
+                    nativePortraitAspectTestSelected || dualNativeSafeSelected) ? 90 : 0;
                 manualVdatAngle=(nativeAspectTestSelected || safeAutoHandoffSelected ||
-                    nativePortraitAspectTestSelected) ? 90 : 0;
+                    nativePortraitAspectTestSelected || dualNativeSafeSelected) ? 90 : 0;
                 initialProfilePortrait=portrait;
                 handoffPending=false;
                 profileInitialEncoderWidth=encoderW;
@@ -685,7 +696,11 @@ public final class MainActivity extends Activity {
                 vdatAngleFrames0=0;vdatAngleFrames90=0;
                 vdatAngleFrames180=0;vdatAngleFrames270=0;
                 vdatAngleConfigs=0;vdatAngleIdrs=0;
-                vdatAngleAwaitFirstPacket=(nativeAspectTestSelected || safeAutoHandoffSelected || nativePortraitAspectTestSelected) ? 90 : -1;
+                vdatAngleAwaitFirstPacket=(nativeAspectTestSelected || safeAutoHandoffSelected || nativePortraitAspectTestSelected || dualNativeSafeSelected) ? 90 : -1;
+                if (dualNativeSafeSelected) appendLog("v2.2 AUTO NATIVO INICIO: Android="+actualW+"x"+actualH+
+                    " H264="+encoderW+"x"+encoderH+" VDAT=90; perfil validado "+
+                    (portrait ? "VERTICAL v2.1" : "HORIZONTAL v1.9")+
+                    ". Ao girar, para e solicita NOVA autorizacao.");
                 if (nativePortraitAspectTestSelected) appendLog("v2.1 RETRATO PROPORCAO: fonte="+actualW+"x"+actualH+
                     " H264="+encoderW+"x"+encoderH+" VDAT=90. Sem GPU, sem crop, codec fixo. Referencia v2.0: 720x1280.");
                 if (safeAutoHandoffSelected) appendLog("v2.0 AUTO SEGURO INÍCIO: perfil="+
@@ -700,7 +715,8 @@ public final class MainActivity extends Activity {
                         "; MediaCodec fixo por sessao, sem crop.");
                 appendLog("Tela real: " + actualW + "x" + actualH + " -> encoder "
                     + encoderW + "x" + encoderH
-                    + (nativePortraitAspectTestSelected ? " | v2.1 RETRATO PROPORCIONAL + VDAT 90" :
+                    + (dualNativeSafeSelected ? " | v2.2 AUTO NATIVO + VDAT 90" :
+                      (nativePortraitAspectTestSelected ? " | v2.1 RETRATO PROPORCIONAL + VDAT 90" :
                       (safeAutoHandoffSelected ? " | v2.0 PERFIL AUTO SEGURO + VDAT 90" :
                       (nativeAspectTestSelected ? " | v1.9 ASPECTO ORIGINAL + VDAT 90" :
                       (manualAngleTestSelected ? " | v1.8 VDAT MANUAL 0/90 - CODEC FIXO" :
@@ -709,7 +725,7 @@ public final class MainActivity extends Activity {
                         (vdatAngleSelected ? " | VDAT ANGLE - CODEC ORIGINAL FIXO" :
                         (autoOriginalSelected ? " | AUTO ORIGINAL v1.1 - CODIFICADOR DINAMICO" :
                             (directTvSelected ? " | TV DIRETO v1.0 (experimental falhou)" :
-                                (fillTvSelected ? " | GPU ANTIGA" : " | ORIGINAL v0.4")))))))))));
+                                (fillTvSelected ? " | GPU ANTIGA" : " | ORIGINAL v0.4"))))))))))));
                 projectionConsent = null; // MediaProjection consent token must be used once.
                 if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent);
                 else startService(intent);
@@ -851,6 +867,17 @@ public final class MainActivity extends Activity {
                 }
                 @Override public void onOrientation(int degrees,int width,int height) {
                     if(session!=generation || !videoStarted || !vdatAngleSelected) return;
+                    if (dualNativeSafeSelected) {
+                        vdatAngleDegrees=90;
+                        boolean currentPortrait = height >= width;
+                        logFromWorker(session,"v2.2 AUTO NATIVO: Android="+degrees+
+                            " src="+width+"x"+height+" perfilAtivo="+
+                            (initialProfilePortrait ? "VERTICAL 576x1280" : "HORIZONTAL 1280x576")+
+                            " VDAT=90, sem codec switch");
+                        if (currentPortrait != initialProfilePortrait)
+                            runOnUiThread(() -> scheduleSafeOrientationHandoff(session,currentPortrait));
+                        return;
+                    }
                     if (nativePortraitAspectTestSelected) {
                         vdatAngleDegrees=90;
                         logFromWorker(session,"v2.1 RETRATO FONTE: Android="+degrees+
@@ -915,15 +942,16 @@ public final class MainActivity extends Activity {
         if (activeSession != null && videoModeRequested) {
             android.util.DisplayMetrics metrics = getResources().getDisplayMetrics();
             boolean portrait = metrics.heightPixels >= metrics.widthPixels;
-            if (nativeAspectTestSelected || safeAutoHandoffSelected || nativePortraitAspectTestSelected) {
+            if (nativeAspectTestSelected || safeAutoHandoffSelected || nativePortraitAspectTestSelected || dualNativeSafeSelected) {
                 android.graphics.Point actual = new android.graphics.Point();
                 getWindowManager().getDefaultDisplay().getRealSize(actual);
                 boolean starPortrait = actual.y >= actual.x;
-                int w = nativePortraitAspectTestSelected ? nativePortraitWidth(actual.x,actual.y) :
+                int w = (nativePortraitAspectTestSelected || (dualNativeSafeSelected && starPortrait)) ?
+                    nativePortraitWidth(actual.x,actual.y) :
                     (starPortrait ? 720 : 1280);
                 int h = starPortrait ? 1280 : nativeLandscapeHeight(actual.x,actual.y);
                 activeSession.setVideoOutput(w,h);
-                logFromWorker(session, (nativePortraitAspectTestSelected ? "v2.1" : (safeAutoHandoffSelected ? "v2.0" : "v1.9"))+
+                logFromWorker(session, (dualNativeSafeSelected ? "v2.2" : (nativePortraitAspectTestSelected ? "v2.1" : (safeAutoHandoffSelected ? "v2.0" : "v1.9")))+
                     " STAR PERFIL: H264="+w+"x"+h+
                     " conforme Android no início; MediaCodec fixo durante sessão.");
             } else {
@@ -1015,7 +1043,7 @@ public final class MainActivity extends Activity {
             if (video) {
                 videoFrames++;
                 videoBytes += data.length;
-                if ((manualAngleTestSelected || nativeAspectTestSelected || safeAutoHandoffSelected || nativePortraitAspectTestSelected) && !label.equals("VDAT_SPS_PPS")) {
+                if ((manualAngleTestSelected || nativeAspectTestSelected || safeAutoHandoffSelected || nativePortraitAspectTestSelected || dualNativeSafeSelected) && !label.equals("VDAT_SPS_PPS")) {
                     long now = android.os.SystemClock.elapsedRealtime();
                     if (fpsWindowStartMs == 0L) fpsWindowStartMs = now;
                     fpsWindowPackets++;
@@ -1072,7 +1100,7 @@ public final class MainActivity extends Activity {
         videoModeRequested = false;
         projectionConsent = null;
         handoffPending=false;
-        if ((manualAngleTestSelected || nativeAspectTestSelected || safeAutoHandoffSelected || nativePortraitAspectTestSelected) && videoStarted) {
+        if ((manualAngleTestSelected || nativeAspectTestSelected || safeAutoHandoffSelected || nativePortraitAspectTestSelected || dualNativeSafeSelected) && videoStarted) {
             appendLog("v1.8 FIM: angle manual="+manualVdatAngle+
                 " codec="+profileInitialEncoderWidth+"x"+profileInitialEncoderHeight+
                 " pacotes="+videoFrames+" dadosUSB="+videoBytes);
