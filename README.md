@@ -1,3 +1,13 @@
+# NURA LD36 v2.8 — RETRATO ALINHADO (EXPERIMENTAL)
+
+Teste físico v2.7 com o celular na vertical mostrou a imagem deitada na TV. A v2.7 aplicava rotação GPU=90° para recuperar largura útil do encoder (1080x2400 vira 2400x1080 dentro de H264 1280x576), mas manteve VDAT=90°, fazendo a orientação de saída depender de duas transformações.
+
+O novo modo opcional v2.8 mantém a rotação GPU90 no RETRATO e experimenta VDAT=0° no RETRATO; PAISAGEM mantém GPU0/VDAT90. A resolução H264 1280x576, a sessão AOA, MediaProjection, superfície e codec permanecem inalterados. Há registros `v2.8 VDAT MUDOU` e contadores por ângulo, mas o adaptador pode não aceitar mudança de orientação VDAT em tempo real. Modos v2.6 e v2.7 preservados; v2.3/v2.5 bloqueados.
+
+**Primeiro teste obrigatório (sem girar):** abrir na vertical, selecionar RETRATO ALINHADO v2.8, iniciar espelhamento, conferir orientação correta e legibilidade. Se deitado, invertido ou sem vídeo, parar e voltar ao GIRO RÁPIDO v2.6. Somente se vertical correta, girar uma vez e observar continuidade; exportar TXT. Compile/CI não validam o LD36 físico.
+
+---
+
 # v2.7 — RETRATO NÍTIDO GPU 90° (EXPERIMENTAL)
 
 Na v2.6, a imagem vertical permaneceu borrada mesmo com o aparelho parado. Causa geométrica verificada no código: fonte 1080×2400 é encaixada em H264 fixo 1280×576 com quad=0.2025x1.0, usando apenas cerca de 259 pixels de largura útil para o retrato. Depois a TV aumenta os pixels, prejudicando letras.
