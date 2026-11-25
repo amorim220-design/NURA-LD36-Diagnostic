@@ -87,6 +87,13 @@ public final class MirrorProjectionService extends Service {
     private volatile int encoderWidth, encoderHeight;
     private volatile int orientationEvents;
     private volatile int codecSwitches;
+    // Pipeline telemetry only: no codec switch, Surface rebind or extra USB writes.
+    private volatile long encodedOutputFrames;
+    private volatile long encodedOutputBytes;
+    private volatile long lastEncodedAtMs;
+    private volatile long firstEncodedAtMs;
+    private volatile long lastRotationEventAtMs;
+    private volatile int telemetryEpoch;
     private Thread worker;
     private final Handler handler = new Handler(Looper.getMainLooper());
 
@@ -298,6 +305,10 @@ public final class MirrorProjectionService extends Service {
                 }
             }
             capturing.set(true);
+            encodedOutputFrames=0;encodedOutputBytes=0;
+            lastEncodedAtMs=0;firstEncodedAtMs=0;
+            lastRotationEventAtMs=0;
+            final int telemetrySession=++telemetryEpoch;
             note("Captura H264 iniciada " + width + "x" + height + " 30fps; enviando VDAT.");
             if (directTvMode) {
                 handler.postDelayed(() -> refreshScreenDimensions("verificacao inicial TV direto"), 1400);
@@ -322,12 +333,42 @@ public final class MirrorProjectionService extends Service {
             }
             worker = new Thread(this::encodeLoop, "nura-h264");
             worker.start();
+            if(fastCanvasMode) schedulePipelineTelemetry(telemetrySession);
         } catch (Exception ex) {
             note("Falha ao iniciar video: " + ex.getClass().getSimpleName() + " " + ex.getMessage());
             stopAll();
             stopSelf();
         }
         return START_NOT_STICKY;
+    }
+
+    /**
+     * Non-invasive diagnostics at fixed 5s intervals. Tracks the GPU producer
+     * and MediaCodec output separately; sending status through existing sink
+     * does not modify video, STAR/VDAT or USB connection lifecycle.
+     */
+    private void schedulePipelineTelemetry(final int session) {
+        handler.postDelayed(() -> {
+            if(!capturing.get() || session!=telemetryEpoch || !fastCanvasMode) return;
+            final long now=android.os.SystemClock.elapsedRealtime();
+            final ScreenCropRenderer renderer=cropRenderer;
+            final long produced=encodedOutputFrames;
+            final long msSinceOutput=lastEncodedAtMs==0 ? -1 : now-lastEncodedAtMs;
+            final long msSinceRotation=lastRotationEventAtMs==0 ? -1 : now-lastRotationEventAtMs;
+            final int gpuFrames=renderer==null ? -1 : renderer.getRenderedFrames();
+            final int srcW=lastCaptureWidth,srcH=lastCaptureHeight;
+            // A previous report logged low transmitted FPS even with USB heartbeats.
+            // Identifying producer/encoder/USB divergence requires these counters.
+            note("v3.1 PIPELINE: src="+srcW+"x"+srcH+
+                " H264="+encoderWidth+"x"+encoderHeight+
+                " GPUrender="+gpuFrames+
+                " encFrames="+produced+" encBytes="+encodedOutputBytes+
+                " lastEncodedAgeMs="+msSinceOutput+
+                " lastRotationAgeMs="+msSinceRotation+
+                " resizeBusy="+canvasResizeInFlight+
+                " codecSwitches="+codecSwitches);
+            schedulePipelineTelemetry(session);
+        },5000);
     }
 
     private void requestKeyframe() {
@@ -367,6 +408,7 @@ public final class MirrorProjectionService extends Service {
                 }
                 final int sequence=++canvasResizeGeneration;
                 final int targetW=width,targetH=height;
+                lastRotationEventAtMs=android.os.SystemClock.elapsedRealtime();
                 note("v2.4 CANVAS: detectou fonte "+width+"x"+height+
                     " via "+reason+"; mantendo encoder="+encoderWidth+"x"+encoderHeight+
                     " USB e MediaProjection abertos");
@@ -722,6 +764,11 @@ public final class MirrorProjectionService extends Service {
                         // If output format provided CSD already, avoid duplicate config.
                     } else {
                         send(data, false, keyframe);
+                        final long outputMs=android.os.SystemClock.elapsedRealtime();
+                        if(firstEncodedAtMs==0)firstEncodedAtMs=outputMs;
+                        lastEncodedAtMs=outputMs;
+                        encodedOutputFrames++;
+                        encodedOutputBytes+=data.length;
                         frames++;
                         if (frames % 90 == 0) note("H264 enviado: " + frames + " quadros.");
                     }
@@ -772,6 +819,7 @@ public final class MirrorProjectionService extends Service {
 
     private synchronized void stopAll() {
         capturing.set(false);
+        telemetryEpoch++; // invalidate scheduled diagnostics when capture ends
         nativeSwitchEpoch++;
         canvasResizeGeneration++;
         canvasResizeInFlight=false;
