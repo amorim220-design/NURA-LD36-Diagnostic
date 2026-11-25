@@ -10,8 +10,8 @@ android {
         applicationId 'com.nura.ld36diagnostic'
         minSdk 26
         targetSdk 32
-        versionCode 27
-        versionName '2.7.0'
+        versionCode 28
+        versionName '2.8.0'
     }
 
     compileOptions {
