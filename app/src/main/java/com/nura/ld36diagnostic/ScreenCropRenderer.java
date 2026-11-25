@@ -36,6 +36,8 @@ public final class ScreenCropRenderer implements AutoCloseable {
     private final java.nio.FloatBuffer pos = asBuffer(new float[]{-1,-1,1,-1,-1,1,1,1});
     private volatile int displayWidth,displayHeight;
     private volatile int correctionDegrees;
+    // Extra portrait letterbox calibration; 1.0 leaves the proven v2.9 geometry unchanged.
+    private volatile float portraitWidthScale = 1.0f;
     private volatile boolean matrixLogged;
     private volatile String matrixDiagnostic = "matriz ainda nao recebida";
     private volatile String geometryDiagnostic = "geometria ainda nao calculada";
@@ -144,6 +146,27 @@ public final class ScreenCropRenderer implements AutoCloseable {
         });
     }
 
+    /**
+     * Diagnostic aspect adjustment for vertical-to-landscape LD36 transport.
+     * Changes ONLY the rendered quad width, never the source texture, codec
+     * dimensions, SurfaceTexture or USB protocol. Safe to invoke at startup.
+     * Calibration must be verified on the physical TV.
+     */
+    public void setPortraitWidthScale(float scale) {
+        if(Float.isNaN(scale) || scale < 0.20f || scale > 1.0f) return;
+        Handler h=handler;
+        if(h==null || closed) return;
+        h.post(() -> {
+            if(closed) return;
+            portraitWidthScale=scale;
+            updateGeometry(displayWidth,displayHeight);
+            matrixLogged=false;
+            android.util.Log.i("NURA-LD36","v3.0 PORTRAIT LETTERBOX scale="+scale+
+                " portrait="+(displayHeight>displayWidth)+
+                " gpu="+correctionDegrees);
+        });
+    }
+
     public int getCorrectionDegrees() { return correctionDegrees; }
     public String getMatrixDiagnostic() {
         return geometryDiagnostic + " | " + matrixDiagnostic;
@@ -151,12 +174,23 @@ public final class ScreenCropRenderer implements AutoCloseable {
 
     private void updateGeometry(int width,int height) {
         float[] points=RotationGeometry.quad(width,height,encodedWidth,encodedHeight,correctionDegrees);
+        // The v2.9 profile was physically upright but stretched on the TV.
+        // Limit width only for portrait; landscape remains exactly v2.6.
+        // Shrinking this quad paints black *side* bars in the encoded frame,
+        // without altering its 1280x576 dimensions or pausing rendering.
+        float effectiveWidthScale=(height>width && correctionDegrees==270)
+            ? portraitWidthScale : 1.0f;
+        if(effectiveWidthScale<1.0f) {
+            for(int i=0;i<points.length;i+=2)
+                points[i] *= effectiveWidthScale;
+        }
         int fittedW = correctionDegrees % 180 == 0 ? width : height;
         int fittedH = correctionDegrees % 180 == 0 ? height : width;
         geometryDiagnostic = "GEOMETRY realGPU="+correctionDegrees+
             " src="+width+"x"+height+" oriented="+fittedW+"x"+fittedH+
             " encoder="+encodedWidth+"x"+encodedHeight+
             " quad="+points[2]+"x"+points[5]+
+            " portraitScale="+effectiveWidthScale+
             " aspect="+String.format(java.util.Locale.US,"%.4f",(double)fittedW/fittedH);
         pos.clear();
         pos.put(points);
