@@ -52,6 +52,7 @@ public final class MirrorProjectionService extends Service {
     public static final String EXTRA_AUTO_ORIGINAL = "auto_original";
     public static final String EXTRA_VDAT_ANGLE = "vdat_angle";
     public static final String EXTRA_LIVE_NATIVE = "live_native_rotation";
+    public static final String EXTRA_FIXED_CANVAS = "fixed_canvas_rotation";
     private static final int NOTIFICATION_ID = 36;
     private static final String CHANNEL = "ld36_projection";
     private final AtomicBoolean capturing = new AtomicBoolean(false);
@@ -72,6 +73,9 @@ public final class MirrorProjectionService extends Service {
     private volatile boolean autoOriginalMode;
     private volatile boolean vdatAngleMode;
     private volatile boolean liveNativeMode;
+    private volatile boolean fixedCanvasMode;
+    private volatile int canvasResizeGeneration;
+    private volatile boolean canvasResizeInFlight;
     private int nativeSwitchEpoch;
     private boolean nativePortraitAtStart;
     private volatile int lastRotationDegrees = -1;
@@ -194,6 +198,9 @@ public final class MirrorProjectionService extends Service {
             autoOriginalMode = intent.getBooleanExtra(EXTRA_AUTO_ORIGINAL, false);
             vdatAngleMode = intent.getBooleanExtra(EXTRA_VDAT_ANGLE, false);
             liveNativeMode = intent.getBooleanExtra(EXTRA_LIVE_NATIVE, false);
+            fixedCanvasMode = intent.getBooleanExtra(EXTRA_FIXED_CANVAS, false);
+            canvasResizeGeneration++;
+            canvasResizeInFlight=false;
             nativeSwitchEpoch++;
             nativePortraitAtStart = height > width;
             lastRotationDegrees = -1;
@@ -225,18 +232,19 @@ public final class MirrorProjectionService extends Service {
                     displayManager.registerDisplayListener(orientationListener,handler);
                 note("TV DIRETO v1.0: MediaProjection -> MediaCodec 1280x720; " +
                     "Android compoe proporcao, sem OpenGL nem redimensionamento duplicado.");
-            } else if (crop && sourceWidth >= 320 && sourceHeight >= 320 &&
+            } else if ((crop || fixedCanvasMode) && sourceWidth >= 320 && sourceHeight >= 320 &&
                     sourceWidth <= 4096 && sourceHeight <= 4096) {
-                // Encoder stays 1280x720; display captures at native screen size.
-                // GPU performs proportional center crop, preserving pixel geometry.
+                // Video codec, decoder SPS/PPS and AOA stay FIXED for entire session.
+                // GPU compositor keeps aspect ratio on a changing source geometry.
                 cropRenderer = new ScreenCropRenderer(inputSurface, sourceWidth, sourceHeight, width, height);
                 display = projection.createVirtualDisplay("NURA-LD36", sourceWidth, sourceHeight, dpi,
                     DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
                     cropRenderer.getCaptureSurface(), null, handler);
                 lastCaptureWidth=sourceWidth;
                 lastCaptureHeight=sourceHeight;
-                note("Rotacao automatica: fonte " + sourceWidth + "x" + sourceHeight +
-                    " -> TV " + width + "x" + height + " (sem cortes).");
+                note((fixedCanvasMode ? "v2.4 CANVAS FIXO" : "GPU anterior")+
+                    ": fonte " + sourceWidth + "x" + sourceHeight +
+                    " -> H264 FIXO " + width + "x" + height + " (sem crop).");
                 displayManager = (DisplayManager) getSystemService(DISPLAY_SERVICE);
                 orientationListener=new DisplayManager.DisplayListener() {
                     @Override public void onDisplayAdded(int id) { }
@@ -297,7 +305,7 @@ public final class MirrorProjectionService extends Service {
                 handler.post(() -> refreshScreenDimensions("VDAT ANGLE inicial"));
                 handler.postDelayed(() -> refreshScreenDimensions("VDAT ANGLE verificacao"),1200);
             }
-            if (cropRenderer != null) {
+            if (cropRenderer != null && !fixedCanvasMode) {
                 note("Orientacao v0.8: UV manual=0, SurfaceTexture matriz preservada; " +
                     "toque Girar 90 se a imagem ficar de lado.");
                 handler.postDelayed(() -> refreshScreenDimensions("verificacao inicial"), 1200);
@@ -343,6 +351,61 @@ public final class MirrorProjectionService extends Service {
         handler.post(() -> {
             if (!capturing.get() || display == null) return;
             if(width < 240 || height < 240 || width > 4096 || height > 4096)return;
+            if (fixedCanvasMode) {
+                // Unlike v2.3, never stop/start MediaCodec or change its
+                // encoded geometry/SPS/PPS. Android capture -> GPU -> FIXED H264.
+                if (width==lastCaptureWidth && height==lastCaptureHeight) return;
+                final int sequence=++canvasResizeGeneration;
+                final int targetW=width,targetH=height;
+                note("v2.4 CANVAS: detectou fonte "+width+"x"+height+
+                    " via "+reason+"; mantendo encoder="+encoderWidth+"x"+encoderHeight+
+                    " USB e MediaProjection abertos");
+                handler.postDelayed(() -> {
+                    if(sequence!=canvasResizeGeneration || !capturing.get() ||
+                        !fixedCanvasMode || cropRenderer==null || display==null ||
+                        canvasResizeInFlight) return;
+                    DisplayManager dm=(DisplayManager)getSystemService(DISPLAY_SERVICE);
+                    Display physical=dm==null ? null:dm.getDisplay(Display.DEFAULT_DISPLAY);
+                    Point actual=new Point();
+                    if(physical==null)return;
+                    physical.getRealSize(actual);
+                    if(actual.x!=targetW || actual.y!=targetH) {
+                        note("v2.4 CANVAS: medidas transitórias ignoradas");
+                        refreshScreenDimensions("v2.4 rechecagem");
+                        return;
+                    }
+                    canvasResizeInFlight=true;
+                    final ScreenCropRenderer renderer=cropRenderer;
+                    final VirtualDisplay vd=display;
+                    final Surface capture=renderer.getCaptureSurface();
+                    // setDefaultBufferSize can wait on EGL. NEVER block UI here.
+                    new Thread(() -> {
+                        boolean ready=renderer.updateCapturedSize(targetW,targetH);
+                        handler.post(() -> {
+                            try {
+                                if(!capturing.get() || sequence!=canvasResizeGeneration ||
+                                    display!=vd || cropRenderer!=renderer) return;
+                                if(!ready) {
+                                    note("v2.4 CANVAS: GPU timeout; dimensões anteriores preservadas");
+                                    return;
+                                }
+                                // Existing VirtualDisplay: resize only the
+                                // source side, not the codec output dimensions.
+                                vd.resize(targetW,targetH,dpiValue);
+                                lastCaptureWidth=targetW;lastCaptureHeight=targetH;
+                                requestKeyframe();
+                                note("v2.4 CANVAS RECONFIGURADO: "+targetW+"x"+targetH+
+                                    " dentro de H264 FIXO="+encoderWidth+"x"+encoderHeight+
+                                    " | "+renderer.getMatrixDiagnostic());
+                            } catch(Exception ex) {
+                                note("v2.4 CANVAS ERRO: "+ex.getClass().getSimpleName()+
+                                    " "+ex.getMessage()+"; pare teste se a imagem congelar");
+                            } finally {canvasResizeInFlight=false;}
+                        });
+                    },"nura-v24-gpu-resize").start();
+                },450);
+                return;
+            }
             if (liveNativeMode) {
                 // Experimental same-projection reconfiguration. No USB reconnect,
                 // no new MediaProjection token. This MAY NOT be accepted by the
@@ -681,6 +744,8 @@ public final class MirrorProjectionService extends Service {
     private synchronized void stopAll() {
         capturing.set(false);
         nativeSwitchEpoch++;
+        canvasResizeGeneration++;
+        canvasResizeInFlight=false;
         note("Rebinds: sucesso=" + successfulRebinds + ", falhas=" + failedRebinds+
             " | AUTO ORIGINAL mudancas="+codecSwitches+" eventos="+orientationEvents);
         if(displayManager!=null && orientationListener!=null) {

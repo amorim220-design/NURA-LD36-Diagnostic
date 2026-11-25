@@ -1,3 +1,13 @@
+# NURA LD36 v2.4 — CANVAS FIXO (EXPERIMENTAL)
+
+**Motivo:** v2.3 reconfigurou MediaCodec e VirtualDisplay com a captura aberta. Teste físico relatou imagem reduzida/cortada, travamento na rotação e falha na próxima captura. O modo v2.3 foi bloqueado no seletor para evitar repetição.
+
+**Estratégia diferente:** novo modo opt-in CANVAS FIXO v2.4 mantém H264 1280x576 e VDAT=90 durante toda a sessão, sem alterar SPS/PPS, MediaCodec, encoder Surface, autorização Android ou canal AOA. A imagem física é capturada no SurfaceTexture em sua resolução nativa e o compositor OpenGL ES faz *contain* proporcional (barras esperadas). Ao girar, há confirmação de 450ms; a GPU atualiza buffer em thread separada e o VirtualDisplay existente é redimensionado somente no lado fonte, sem chamar MediaCodec.stop() durante a captura. Nenhuma garantia de correção da geometria: renderer v0.9 já teve distorção em testes anteriores; este é um experimento com fonte nativa e dimensões fixas. Em especial, retrato pode ter barras diferentes das aprovadas na v2.1.
+
+**Testar:** instalar, escolher CANVAS FIXO v2.4, iniciar em vertical e primeiro verificar imagem estável sem girar. Se estável, girar uma vez para horizontal, sem tocar no botão, e observar imagem/fluidez; parar se deformar ou travar. Exportar TXT com `v2.4 CANVAS`, `CANVAS RECONFIGURADO`, `GPU` e erros. Se falhar, selecionar v2.2 AUTO NATIVO, v2.1 RETRATO NATIVO ou v1.9 PROPORÇÃO NATIVA — perfis anteriores não alterados. A compilação não valida dongle real.
+
+---
+
 # NURA LD36 v2.3 — rotação sem encerrar AOA (prova de viabilidade EXPERIMENTAL)
 
 Modo novo opt-in **GIRO CONTÍNUO v2.3**, não substitui os modos v1.9/v2.1/v2.2 aprovados. Um consentimento Android inicia MediaProjection/VirtualDisplay e H264 nas dimensões comprovadas: 576x1280 em retrato ou 1280x576 em paisagem, VDAT 90. Quando Android muda orientação, o serviço aguarda 450ms para estabilização e tenta desligar SOMENTE o codificador antigo, criar MediaCodec novo, anexar sua Surface ao MESMO VirtualDisplay, redimensionar a superfície e enviar SPS/PPS/IDR via o MESMO canal AOA. Não reconecta USB nem pede nova autorização. Não modifica o protocolo STAR para o fluxo seguinte; o LD36 pode ou não aceitar as mudanças no decodificador, causando imagem travada ou preta. Esta é uma investigação e NÃO rotação contínua validada.
