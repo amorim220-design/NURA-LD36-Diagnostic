@@ -1,3 +1,17 @@
+# NURA LD36 v3.0 — HD FIXO (experimento controlado)
+
+**Requisito do usuário:** no retrato, imagem em pé e centralizada, com barras laterais permitidas e letras legíveis, sem distorção. Na paisagem, preencher a TV sem cortar. Rotação contínua sem tocar em ESPELHAR novamente.
+
+**Por que a v2.9 falhou:** foto física mostrou imagem horizontal achatada; novas mudanças de ângulos GPU/VDAT não são confiáveis sem conhecer a transformação do firmware do LD36. v2.7 mostrou imagem deitada, v2.8 invertida; portanto a v3.0 descarta as alterações GPU dessas versões e parte diretamente da última linha estável, a v2.6.
+
+**Hipótese separada:** a v2.6 comprime o retrato 1080×2400 num quadro 1280×576, deixando apenas ~259 pixels de largura útil. Com a mesma geometria de aspect-fit e orientação GPU0/VDAT90, v3.0 testa 1920×864 (largura útil ~389 pixels). Isso reduz a perda de resolução por amostragem, mas **não garante proporção final correta, imagem nítida, nem compatibilidade do decodificador LD36**. O vídeo é 2,25 vezes maior em pixels; a performance do encoder/decoder pode cair. H264 fica fixo durante toda a sessão; Surface/USB/MediaProjection não são trocados durante giro.
+
+**Como testar:** escolher HD FIXO v3.0; começar parado em retrato; conferir se TV exibe vídeo, letras mais nítidas e proporção correta. Se ficar preto, deitado, distorcido ou lento, PARAR e selecionar GIRO RÁPIDO v2.6, sem insistir. Se retrato funcionar, fazer uma rotação para horizontal e observar vídeo contínuo. Enviar foto + TXT. **Não marcar v3.0 como corrigida apenas por aprovação do GitHub Actions**.
+
+**Próximo bloqueio fundamental:** se 1920×864 falhar ou continuar com distorção, investigar contrato do decodificador/escala LD36, antes de aumentar resoluções ou mudar ângulos novamente.
+
+---
+
 # NURA LD36 v2.6 — giro rápido sem congelamento de quadros (experimental)
 
 A v2.5 falhou fisicamente: depois do giro, a imagem ficou congelada e o log deixou de registrar vídeo, embora o USB continuasse. Revertido o mecanismo de retenção de quadros. Esta versão parte **diretamente da v2.4**, última com rotação contínua confirmada na TV, porém com efeito transitório de imagem pequena.
