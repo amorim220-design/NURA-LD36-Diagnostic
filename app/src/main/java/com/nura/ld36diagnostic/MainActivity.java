@@ -216,7 +216,7 @@ public final class MainActivity extends Activity {
         TextView title = text("LD36 Diagnostic", 28, INK, Typeface.BOLD);
         title.setPadding(0, dp(7), 0, dp(5));
         root.addView(title);
-        TextView subtitle = text("VERSÃO 3.2.0 • HÍBRIDO SEGURO (TESTE)", 13, ACCENT, Typeface.BOLD);
+        TextView subtitle = text("VERSÃO 3.3.0 • PESQUISA GIRO CONTÍNUO (BASE v3.2)", 13, ACCENT, Typeface.BOLD);
         root.addView(subtitle);
 
         LinearLayout statusCard = columnCard();
@@ -608,7 +608,12 @@ public final class MainActivity extends Activity {
                 appendLog("AUTO GIRO: estado atual divergiu do evento inicial; captura preservada.");
                 return;
             }
-            appendLog((dualNativeSafeSelected ? "v2.2 AUTO NATIVO" : "v2.0 AUTO SEGURO")+
+            if(hybridNativeSelected) appendLog("v3.3 GATE: perfil ativo="+
+                (initialProfilePortrait ? "v2.2 RETRATO" : "v2.7 PAISAGEM")+
+                " proximo="+(stillPortrait ? "v2.2 RETRATO" : "v2.7 PAISAGEM")+
+                " SPS dinamico NAO validado; solicitar consentimento novo.");
+            appendLog((hybridNativeSelected ? "v3.3 HIBRIDO" :
+                (dualNativeSafeSelected ? "v2.2 AUTO NATIVO" : "v2.0 AUTO SEGURO"))+
                 ": perfil atual "+
                 (initialProfilePortrait ? "VERTICAL" : "HORIZONTAL")+
                 " não corresponde ao Android "+(stillPortrait ? "VERTICAL" : "HORIZONTAL")+
@@ -709,12 +714,13 @@ public final class MainActivity extends Activity {
                     stopCapture();
                     return;
                 }
-                int encoderW = hybridNativeSelected ? (portrait ? nativePortraitWidth(actualW,actualH) : 1280) :
+                final int[] hybridProfile = hybridNativeSelected ? HybridTransitionPolicy.profile(actualW,actualH) : null;
+                int encoderW = hybridNativeSelected ? hybridProfile[0] :
                     (fixedCanvasSelected ? 1280 :
                     ((nativePortraitAspectTestSelected || ((dualNativeSafeSelected || liveNativeSelected) && portrait)) ?
                     nativePortraitWidth(actualW,actualH) :
                     ((fillTvSelected || directTvSelected) ? 1280 : (portrait ? 720 : 1280))));
-                int encoderH = hybridNativeSelected ? (portrait ? 1280 : 576) :
+                int encoderH = hybridNativeSelected ? hybridProfile[1] :
                     (fixedCanvasSelected ? 576 :
                     (nativeAspectTestSelected || ((safeAutoHandoffSelected || dualNativeSafeSelected || liveNativeSelected) && !portrait))
                     ? nativeLandscapeHeight(actualW, actualH) :
@@ -1043,7 +1049,7 @@ public final class MainActivity extends Activity {
                     nativePortraitWidth(actual.x,actual.y) :
                     (starPortrait ? 720 : 1280);
                 int h = starPortrait ? 1280 : nativeLandscapeHeight(actual.x,actual.y);
-                if(hybridNativeSelected) {w=starPortrait ? nativePortraitWidth(actual.x,actual.y) : 1280; h=starPortrait ? 1280 : 576;}
+                if(hybridNativeSelected) {int[] hybrid=HybridTransitionPolicy.profile(actual.x,actual.y);w=hybrid[0];h=hybrid[1];}
                 else if(fixedCanvasSelected) {w=1280;h=576;}
                 activeSession.setVideoOutput(w,h);
                 logFromWorker(session, (hybridNativeSelected ? "v3.2" : (fixedCanvasSelected ? "v2.4" : (liveNativeSelected ? "v2.3" : (dualNativeSafeSelected ? "v2.2" : (nativePortraitAspectTestSelected ? "v2.1" : (safeAutoHandoffSelected ? "v2.0" : "v1.9"))))))+
