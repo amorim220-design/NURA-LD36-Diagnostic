@@ -1,3 +1,13 @@
+# v1.4 — diagnostico da confirmacao real de envio VDAT apos giro
+
+Reanalisado arquivo fisico TX de 2026-11-24: 30.040.644 bytes, estrutura sem gaps, 2.040 quadros VDAT (1 SPS/PPS e 2.039 quadros de video), angulos 0=1.632 e 90=407 pacotes e 91 heartbeats. Foram seis mudancas de valor apos angulo inicial. Os dados mostram o que o app transmitiu, NAO como a TV exibiu.
+
+Melhoria v1.4: no modo opt-in VDAT ANGLE ha contadores independentes dos quadros transmitidos por angulo 0/90/180/270, dos pedidos/quadros IDR observados, dos SPS/PPS, e das transicoes. Depois de `transmitUsb` retornar, o app registra `VDAT ANGLE CONFIRMACAO TX` para o primeiro pacote transmitido em cada orientacao e uma linha periodica com contadores a cada 300 quadros. Ao parar, `VDAT ANGLE RESUMO` resume o teste. Isso ajuda separar evento do Android e envio USB sem afirmar que o LD36 decodificou o video.
+
+O app continua iniciando com modo Original como default; nao modifica superficie ou MediaCodec no modo VDAT ANGLE. A semantica de `angle` no receptor e o resultado visual ainda sao desconhecidos. Nao utilizar modo AUTO ORIGINAL que congelou no hardware. Teste em TV: escolher VDAT ANGLE v1.4, iniciar em retrato, girar uma unica vez, observar imagem, exportar TXT e BIN. Sem relato visual nao considerar o recurso funcional.
+
+---
+
 # v1.3 — experimento isolado do campo de orientação VDAT (sem reinicialização do H.264)
 
 **Evidência na TV:** modo Original v0.4 mostra imagem; v1.0 direto horizontal 1280×720 não exibiu vídeo; v1.1 troca dinâmica H264 iniciou giro mas congelou e depois ficou preto. O código atual envia `VideoPacket.make(..., angle=0, ...)` em todos os quadros. O formato VDAT possui um `int32` na posição 24 para `angle`, mas sua semântica no hardware LD36 ainda **não está comprovada**.
