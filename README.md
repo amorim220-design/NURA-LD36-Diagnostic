@@ -1,3 +1,17 @@
+# v3.3 — Pesquisa de rotação contínua sem regressão (não é correção automática)
+
+Esta é uma iteração de **engenharia e testes de transição**, construída a partir da v3.2 aprovada fisicamente. Não altera ângulos GPU, encoder nem resolução ativa e não envia comandos novos ao LD36.
+
+**Resultado confirmado pelo usuário:** perfil vertical v2.2 e perfil horizontal v2.7 reproduzidos satisfatoriamente na v3.2, porém ao girar exige tocar ESPELHAR e confirmar a autorização do Android.
+
+**Bloqueio técnico:** a resposta STAR estabelece as dimensões iniciais do vídeo; VDAT envia H264 Annex-B e ângulo, e as dimensões mudariam no SPS/PPS. O adaptador ainda não foi demonstrado capaz de aceitar uma alteração de SPS/PPS sem renegociar a sessão. Uma tentativa real de recriação de codec durante transmissão na v2.3 congelou.
+
+**v3.3 implementada:** classe independente `HybridTransitionPolicy` centraliza perfis v2.2 (576×1280 para 1080×2400, com ajuste 16-pixel) e v2.7 (1280×576); considera troca de orientação como transição que requer novo consentimento, e proíbe ativar troca de codec dinâmica sem confirmação explícita. O modo HÍBRIDO reutiliza a mesma classe na seleção de resolução para STAR e encoder, evitando divergências. O log registra por que o handoff permanece seguro e a suite de testes executa casos de retrato, paisagem, notificações duplicadas, mudanças em ambos os sentidos e impossibilidade de codec switch não validado.
+
+**Nenhum teste de televisão é necessário nesta etapa.** O objetivo é construir uma base verificável para pesquisar suporte a troca de SPS/PPS, sinalização de resolução e ciclo de vida do MediaProjection sem alterar a versão física que já funciona. Não chamar a v3.3 de giro contínuo.
+
+---
+
 # NURA LD36 v3.2 — MODO HÍBRIDO SEGURO v2.2 + v2.7
 
 **Relato físico do usuário:** v2.2 forneceu imagem vertical perfeita; v2.7 na horizontal ficou boa e não travou durante o giro. A exigência final continua sendo manter retrato perfeito e paisagem preenchendo TV, com giro automático contínuo.
