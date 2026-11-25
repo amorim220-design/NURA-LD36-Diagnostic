@@ -1,3 +1,15 @@
+# v1.9 — Experimento de proporção nativa na horizontal
+
+**Evidência física preservada**: v1.8, H.264 inicial 1280×720 e VDAT 90° exibiram a imagem na orientação horizontal correta na TV, mas com barras em todos os lados. v1.5 vertical exibiu imagem correta com barras laterais esperadas. Não há prova de que o receptor LD36 aceita H.264 de 1280×576 ou de que elimina barras com esta alteração.
+
+**Hipótese a testar:** no celular com tela 2400×1080 (20:9), MediaProjection→VirtualDisplay de 1280×720 (16:9) faz um primeiro fit/letterbox. Depois LD36 aplica outro enquadramento 16:9. Esta nova modalidade opt-in altera **apenas a geometria inicial do fluxo H.264 e da resposta STAR** para manter a proporção da fonte; mantém o VDAT em 90° da v1.8. Para fonte 2400×1080 usa H.264 1280×576 (múltiplo de 16), sem GPU, sem crop, sem deformar intencionalmente, sem trocar MediaCodec durante a sessão. A TV de 16:9 ainda pode mostrar barras horizontais proporcionais devido ao 20:9.
+
+**Como testar:** colocar Android realmente na horizontal antes de autorizar MediaProjection; selecionar "PROPORÇÃO NATIVA v1.9", iniciar teste e manter posição; conferir no TXT `v1.9 PROPORCAO` e `v1.9 STAR PERFIL: H264=1280x576`, `VDAT ANGLE CONFIRMACAO TX: ...90`; fotografar TV e verificar bordas, rotação, proporção e estabilidade. Caso apareça tela preta/sem imagem, interromper e voltar ao modo v1.8 VDAT 90°. Não escolher esta modalidade em retrato. A v1.9 é diagnóstica; comportamento automático entre retrato/paisagem ainda não foi implementado.
+
+**Critério de aprovação:** vídeo recebido na TV com orientação horizontal correta, sem corte ou estiramento, e bordas reduzidas em comparação visual com v1.8. Se não for compatível, investigar STAR/SPS e retorno do dispositivo, em vez de insistir em escalas arbitrárias.
+
+---
+
 # NURA LD36 v1.8 — teste VDAT manual e desempenho de envio
 
 Evidência física v1.7: Android 2400x1080, codec 1280x720, angle VDAT 0°, mas imagem TV girada/deformada. Log anterior: 209 quadros em aproximadamente 90s; não há prova de que o MediaCodec esteve gerando 30 fps contínuos, nem de que o dongle interpretou o campo VDAT como esperado.
