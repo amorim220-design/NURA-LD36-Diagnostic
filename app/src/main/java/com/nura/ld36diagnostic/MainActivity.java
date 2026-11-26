@@ -236,7 +236,7 @@ public final class MainActivity extends Activity {
         TextView title = text("LD36 Diagnostic", 28, INK, Typeface.BOLD);
         title.setPadding(0, dp(7), 0, dp(5));
         root.addView(title);
-        TextView subtitle = text("VERSÃO 4.6.0 • CANVAS NATIVO (EXPERIMENTAL)", 13, ACCENT, Typeface.BOLD);
+        TextView subtitle = text("VERSÃO 4.7.0 • CANVAS NATIVO (EXPERIMENTAL)", 13, ACCENT, Typeface.BOLD);
         root.addView(subtitle);
 
         LinearLayout statusCard = columnCard();
@@ -256,13 +256,13 @@ public final class MainActivity extends Activity {
         stopButton = button("Parar", PANEL, INK);
         Button autoButton = button("▶ VARREDURA PASSIVA (60s)", ACCENT, BG);
         Button activeButton = button("▶ NEGOCIAR PROTOCOLO (60s)", PANEL, INK);
-        Button videoButton = button("▶ ESPELHAR VÍDEO (TESTE 90s)", ACCENT, BG);
+        Button videoButton = button("▶ INICIAR ESPELHAMENTO", ACCENT, BG);
         stopButton.setEnabled(false);
         addButton(commands, scanButton);
-        addButton(commands, connectButton);
+        
         addButton(commands, stopButton);
-        addToRoot(root, autoButton, 14);
-        addToRoot(root, activeButton, 8);
+        
+        
         TextView fitLabel = text("AJUSTE NA TV", 12, ACCENT, Typeface.BOLD);
         addToRoot(root, fitLabel, 16);
         Spinner fitPicker = new Spinner(this);
@@ -294,23 +294,7 @@ public final class MainActivity extends Activity {
         fitPicker.setAdapter(fitAdapter);
         fitPicker.setBackgroundColor(PANEL);
         // New mode is opt-in: known-working Original remains safe initial selection.
-        int mode = getPreferences(MODE_PRIVATE).getInt("capture_mode_v35",
-            getPreferences(MODE_PRIVATE).getInt("capture_mode_v32",
-            getPreferences(MODE_PRIVATE).getInt("capture_mode_v27",
-            getPreferences(MODE_PRIVATE).getInt("capture_mode_v26",
-            getPreferences(MODE_PRIVATE).getInt("capture_mode_v24",
-            getPreferences(MODE_PRIVATE).getInt("capture_mode_v23",
-            getPreferences(MODE_PRIVATE).getInt("capture_mode_v22",
-            getPreferences(MODE_PRIVATE).getInt("capture_mode_v21",
-            getPreferences(MODE_PRIVATE).getInt("capture_mode_v20",
-            getPreferences(MODE_PRIVATE).getInt("capture_mode_v19",
-            getPreferences(MODE_PRIVATE).getInt("capture_mode_v18",
-            getPreferences(MODE_PRIVATE).getInt("capture_mode_v17",
-            getPreferences(MODE_PRIVATE).getInt("capture_mode_v16",
-            getPreferences(MODE_PRIVATE).getInt("capture_mode_v15",
-                getPreferences(MODE_PRIVATE).getInt("capture_mode_v13", 0)))))))))))))));
-        if (mode == 13 || mode == 15) mode = 14; // Never restore failed v2.3/v2.5
-        if (mode < 0 || mode > 19) mode = 0;
+        int mode = 19;
         fillTvSelected = mode == 1;
         directTvSelected = mode == 2;
         autoOriginalSelected = mode == 3;
@@ -417,14 +401,14 @@ public final class MainActivity extends Activity {
             }
             @Override public void onNothingSelected(AdapterView<?> parent) { }
         });
-        addToRoot(root, fitPicker, 7);
-        addToRoot(root, text("QUALIDADE GRÁFICA (HÍBRIDO v4.6)", 12, ACCENT, Typeface.BOLD), 12);
+        // Legacy capture modes hidden; validated hybrid is always selected.
+        addToRoot(root, text("QUALIDADE GRÁFICA", 12, ACCENT, Typeface.BOLD), 12);
         Spinner qualityPicker = new Spinner(this);
-        ArrayAdapter<String> qualityAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, new String[]{"Original V44 — 1280 / 4 Mbps / 30 FPS", "Econômico — 960 / 2 Mbps / 30 FPS", "Nitidez — 1280 / 8 Mbps / 30 FPS", "Full HD proporcional — 1920 / 10 Mbps / 30 FPS", "Full HD fluido — 1920 / 12 Mbps / 60 FPS (experimental)", "Jogo leve — 1280 / 6 Mbps / 60 FPS", "Fluido — 1920 / 8 Mbps / 45 FPS", "Full HD jogo — 1920 / 8 Mbps / 60 FPS"});
+        ArrayAdapter<String> qualityAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, new String[]{"Original V44 — 1280 / 4 Mbps / 30 FPS", "Econômico — 960 / 2 Mbps / 30 FPS", "Nitidez — 1280 / 8 Mbps / 30 FPS", "Full HD proporcional — 1920 / 10 Mbps / 30 FPS", "Jogo leve — 1280 / 6 Mbps / 60 FPS", "Fluido — 1920 / 8 Mbps / 45 FPS", "Full HD jogo — 1920 / 8 Mbps / 60 FPS"});
         qualityAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         qualityPicker.setAdapter(qualityAdapter);
         qualityPicker.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            public void onItemSelected(AdapterView<?> parent, android.view.View view, int position, long id) { qualityProfile = position; }
+            public void onItemSelected(AdapterView<?> parent, android.view.View view, int position, long id) { qualityProfile = position >= 4 ? position + 1 : position; }
             public void onNothingSelected(AdapterView<?> parent) { }
         });
         addToRoot(root, qualityPicker, 7);
@@ -433,10 +417,10 @@ public final class MainActivity extends Activity {
         final boolean[] gameEnabled = {false};
         gameButton.setOnClickListener(v -> {
             if (running.get()) { appendLog("Pare a transmissão antes de alterar o Modo Jogo."); return; }
-            if (!gameEnabled[0]) { previousQuality[0] = qualityPicker.getSelectedItemPosition(); qualityPicker.setSelection(5); qualityProfile = 5; gameEnabled[0] = true; qualityPicker.setEnabled(false); }
-            else { qualityPicker.setEnabled(true); qualityPicker.setSelection(previousQuality[0]); qualityProfile = previousQuality[0]; gameEnabled[0] = false; }
+            if (!gameEnabled[0]) { previousQuality[0] = qualityPicker.getSelectedItemPosition(); qualityPicker.setSelection(4); qualityProfile = 5; gameEnabled[0] = true; qualityPicker.setEnabled(false); }
+            else { qualityPicker.setEnabled(true); qualityPicker.setSelection(previousQuality[0]); qualityProfile = previousQuality[0] >= 4 ? previousQuality[0] + 1 : previousQuality[0]; gameEnabled[0] = false; }
             gameButton.setText(gameEnabled[0] ? "MODO JOGO — ATIVADO" : "MODO JOGO — DESATIVADO");
-            appendLog("Modo Jogo: válido na próxima sessão HÍBRIDO v4.6.");
+            appendLog("Modo Jogo: válido na próxima sessão automática.");
         });
         addToRoot(root, gameButton, 8);
         addToRoot(root, videoButton, 12);
@@ -446,13 +430,13 @@ public final class MainActivity extends Activity {
         angleButtons.setOrientation(LinearLayout.HORIZONTAL);
         addButton(angleButtons, testAngle0);
         addButton(angleButtons, testAngle90);
-        addToRoot(root, angleButtons, 8);
+        
         testAngle0.setOnClickListener(v -> chooseManualVdatAngle(0));
         testAngle90.setOnClickListener(v -> chooseManualVdatAngle(90));
         Button rotateButton = button("↻ GIRAR IMAGEM DA TV 90°", PANEL, INK);
-        addToRoot(root, rotateButton, 8);
+        
         Button resetGeometryButton = button("REDEFINIR PROPORÇÃO / GIRO 0°", PANEL, INK);
-        addToRoot(root, resetGeometryButton, 8);
+        
         resetGeometryButton.setOnClickListener(v -> {
             if (!running.get() || !videoStarted || !fillTvSelected) {
                 appendLog("Redefinir: inicie antes o modo Rotacao experimental.");
