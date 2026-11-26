@@ -58,6 +58,7 @@ public final class MirrorProjectionService extends Service {
     private static final int NOTIFICATION_ID = 36;
     private static final String CHANNEL = "ld36_projection";
     private final AtomicBoolean capturing = new AtomicBoolean(false);
+    private final AtomicBoolean stopping = new AtomicBoolean(false);
     private MediaProjection projection;
     private MediaCodec codec;
     private Surface inputSurface;
@@ -149,11 +150,10 @@ public final class MirrorProjectionService extends Service {
             return START_NOT_STICKY;
         }
         if (ACTION_STOP.equals(intent.getAction())) {
-            stopAll();
-            stopSelf();
+            stopAsync();
             return START_NOT_STICKY;
         }
-        if (!ACTION_START.equals(intent.getAction()) || capturing.get()) return START_NOT_STICKY;
+        if (!ACTION_START.equals(intent.getAction()) || capturing.get() || stopping.get()) return START_NOT_STICKY;
         try {
             foreground();
             int result = intent.getIntExtra(EXTRA_RESULT, 0);
@@ -814,8 +814,16 @@ public final class MirrorProjectionService extends Service {
         stopForeground(true);
     }
 
+    private void stopAsync() {
+        if (!stopping.compareAndSet(false, true)) return;
+        capturing.set(false);
+        new Thread(() -> {
+            try { stopAll(); } finally { handler.post(this::stopSelf); }
+        }, "nura-projection-stop").start();
+    }
+
     @Override public void onDestroy() {
-        stopAll();
+        if (!stopping.get()) stopAsync();
         super.onDestroy();
     }
 }
