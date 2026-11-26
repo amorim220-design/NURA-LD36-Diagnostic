@@ -429,6 +429,15 @@ public final class MainActivity extends Activity {
             public void onNothingSelected(AdapterView<?> parent) { }
         });
         addToRoot(root, qualityPicker, 7);
+        Button applyQuality = button("APLICAR QUALIDADE AO VIVO (TESTE)", PANEL, INK);
+        addToRoot(root, applyQuality, 8);
+        applyQuality.setOnClickListener(v -> {
+            if (!running.get() || !videoStarted) { appendLog("Selecione a qualidade e inicie o espelhamento."); return; }
+            Intent change = new Intent(this, MirrorProjectionService.class);
+            change.setAction(MirrorProjectionService.ACTION_QUALITY);
+            change.putExtra("quality_profile", qualityProfile);
+            startService(change);
+        });
         Button gameButton = button("MODO JOGO — DESATIVADO", PANEL, INK);
         final int[] previousQuality = {0};
         final boolean[] gameEnabled = {false};
