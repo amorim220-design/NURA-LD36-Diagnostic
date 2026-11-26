@@ -357,7 +357,11 @@ public final class MirrorProjectionService extends Service {
 
     private static int qualityEdge(int q) { return q == 1 ? 960 : (q == 3 || q == 4 || q == 6 || q == 7) ? 1920 : 1280; }
     private void changeQuality(int q) {
-        if (!capturing.get() || stopping.get() || !fixedCanvasMode || cropRenderer == null || switchingInProgress || canvasResizeInFlight || q == currentQuality) return;
+        if (!capturing.get() || stopping.get()) { note("QUALIDADE: captura indisponível"); return; }
+        if (!fixedCanvasMode || cropRenderer == null) { note("QUALIDADE: modo incompatível"); return; }
+        if (switchingInProgress || canvasResizeInFlight) { note("QUALIDADE: aguarde a rotação ou troca anterior e tente novamente"); return; }
+        if (q == currentQuality) { note("QUALIDADE: perfil já ativo"); return; }
+        note("QUALIDADE: preparando novo codificador");
         switchingInProgress = true;
         final int w = Math.max(320, Math.round(baseEncoderW * qualityEdge(q) / 1280f / 16f) * 16);
         final int h = Math.max(320, Math.round(baseEncoderH * qualityEdge(q) / 1280f / 16f) * 16);
@@ -401,9 +405,9 @@ public final class MirrorProjectionService extends Service {
                     try { old.stop(); } catch (Exception ignored) {}
                     try { old.release(); } catch (Exception ignored) {}
                     oldSurface.release();
-                    note("Qualidade ao vivo: " + w + "x" + h + "; valide imagem na TV.");
+                    note("QUALIDADE: codificador alterado para " + w + "x" + h + "; valide imagem na TV.");
                 } catch (Exception e) {
-                    note("Troca de qualidade falhou: " + e.getMessage());
+                    note("QUALIDADE: falha na troca: " + e.getMessage());
                 } finally {
                     if (!committed) {
                         if (renderer != null) renderer.close();
