@@ -232,7 +232,7 @@ public final class MainActivity extends Activity {
         TextView title = text("LD36 Diagnostic", 28, INK, Typeface.BOLD);
         title.setPadding(0, dp(7), 0, dp(5));
         root.addView(title);
-        TextView subtitle = text("VERSÃO 4.2.0 • CANVAS NATIVO (EXPERIMENTAL)", 13, ACCENT, Typeface.BOLD);
+        TextView subtitle = text("VERSÃO 4.3.0 • CANVAS NATIVO (EXPERIMENTAL)", 13, ACCENT, Typeface.BOLD);
         root.addView(subtitle);
 
         LinearLayout statusCard = columnCard();
@@ -282,7 +282,7 @@ public final class MainActivity extends Activity {
             "GIRO RÁPIDO v2.6 — GPU sem segurar quadros",
             "RETRATO NÍTIDO v2.7 — GPU 90° + H264 fixo (experimental)",
             "HÍBRIDO v3.2 — vertical v2.2 + horizontal v2.7 (reinicia ao girar)",
-            "HÍBRIDO v4.2 — expansão horizontal com canvas nativo (experimental)"
+            "HÍBRIDO v4.3 — correção de inversão horizontal (experimental)"
         };
         ArrayAdapter<String> fitAdapter = new ArrayAdapter<>(this,
             android.R.layout.simple_spinner_item, fitting);
@@ -799,7 +799,7 @@ public final class MainActivity extends Activity {
                 vdatAngleFrames180=0;vdatAngleFrames270=0;
                 vdatAngleConfigs=0;vdatAngleIdrs=0;
                 vdatAngleAwaitFirstPacket=(nativeAspectTestSelected || safeAutoHandoffSelected || nativePortraitAspectTestSelected || dualNativeSafeSelected || liveNativeSelected || fixedCanvasSelected || hybridNativeSelected) ? 90 : -1;
-                if(autoConsentHybridSelected) { vdatAngleAwaitFirstPacket=vdatAngleDegrees; appendLog("V42: perfil nativo, encoder fixo, VDAT inicial="+vdatAngleDegrees+", sem novo consentimento."); }
+                if(autoConsentHybridSelected) { vdatAngleAwaitFirstPacket=vdatAngleDegrees; appendLog("V43: perfil nativo, encoder fixo, VDAT inicial="+vdatAngleDegrees+", sem novo consentimento."); }
                 else if(hybridNativeSelected) appendLog("v3.2 HIBRIDO CAPTURA: "+
                     (portrait ? "v2.2 RETRATO nativo" : "v2.7 PAISAGEM GPU0 H2641280x576")+
                     "; na proxima rotacao serao solicitados parada segura e novo consentimento.");
@@ -991,7 +991,7 @@ public final class MainActivity extends Activity {
                                 vdatAngleDegrees = next;
                                 vdatAngleChanges++;
                                 vdatAngleAwaitFirstPacket = next;
-                                logFromWorker(session, "V42 VDAT: " + next + " graus; encoder fixo.");
+                                logFromWorker(session, "V43 VDAT: " + next + " graus; encoder fixo.");
                             }
                             return;
                         }
