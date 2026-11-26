@@ -192,8 +192,8 @@ public final class MirrorProjectionService extends Service {
             MediaFormat fmt = MediaFormat.createVideoFormat("video/avc", width, height);
             fmt.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
             int quality = intent.getIntExtra("quality_profile", 0);
-            int bitrate = quality == 1 ? 2000000 : quality == 2 ? 8000000 : quality == 3 ? 10000000 : quality == 4 ? 12000000 : 4000000;
-            int fps = quality == 4 ? 60 : 30;
+            int bitrate = quality == 1 ? 2000000 : quality == 2 ? 8000000 : quality == 3 ? 10000000 : quality == 4 ? 12000000 : quality == 5 ? 6000000 : (quality == 6 || quality == 7) ? 8000000 : 4000000;
+            int fps = quality == 6 ? 45 : (quality == 4 || quality == 5 || quality == 7) ? 60 : 30;
             fmt.setInteger(MediaFormat.KEY_BIT_RATE, bitrate);
             fmt.setInteger(MediaFormat.KEY_FRAME_RATE, fps);
             fmt.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1);
