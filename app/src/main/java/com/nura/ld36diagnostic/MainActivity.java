@@ -980,14 +980,17 @@ public final class MainActivity extends Activity {
 
     private void scheduleAutoStop(int session) {
         autoScanRequested = false;
-        appendLog(videoModeRequested ? "Teste de video: janela maxima de 90 segundos." :
-                  "Varredura de protocolo durante 60 segundos.");
+        if (videoModeRequested) {
+            appendLog("Espelhamento contínuo: encerre manualmente ou desconecte o USB.");
+            return;
+        }
+        appendLog("Varredura de protocolo durante 60 segundos.");
         mainHandler.postDelayed(() -> {
-            if (generation == session && running.get()) {
+            if (generation == session && running.get() && !videoModeRequested) {
                 appendLog("Varredura automática concluída após 60 segundos.");
                 stopCapture();
             }
-        }, videoModeRequested ? 90_000L : AUTO_SCAN_MS);
+        }, AUTO_SCAN_MS);
     }
 
     private void captureLoop(int session, FileInputStream in, File targetRaw,
