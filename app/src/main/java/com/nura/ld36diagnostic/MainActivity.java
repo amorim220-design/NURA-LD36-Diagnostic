@@ -127,6 +127,8 @@ public final class MainActivity extends Activity {
     private long videoBytes;
     private boolean txLimitWarned;
     private File txFile;
+    private volatile boolean saveDiagnostics;
+    private TextView qualityFeedback;
     private boolean activeScanRequested = false;
     private boolean activeScan = false;
     private Thread captureThread;
@@ -431,11 +433,34 @@ public final class MainActivity extends Activity {
         addToRoot(root, qualityPicker, 7);
         Button applyQuality = button("APLICAR QUALIDADE AO VIVO (TESTE)", PANEL, INK);
         addToRoot(root, applyQuality, 8);
+        qualityFeedback = text("Qualidade ao vivo: aguardando", 13, INK, Typeface.NORMAL);
+        addToRoot(root, qualityFeedback, 8);
+        Button cleanLogs = button("LIMPAR REGISTROS DE DIAGNÓSTICO", PANEL, INK);
+        addToRoot(root, cleanLogs, 8);
+        cleanLogs.setOnClickListener(v -> {
+            if (running.get()) { android.widget.Toast.makeText(this, "Pare a sessão antes de limpar.", 0).show(); return; }
+            long removed = 0;
+            for (File dir : new File[]{getExternalFilesDir(null), getFilesDir()}) {
+                if (dir == null) continue;
+                File[] files = dir.listFiles();
+                if (files == null) continue;
+                for (File file : files) {
+                    if (file.isFile() && file.getName().matches("NURA_LD36_(RX_|TX_)?[0-9]{8}_[0-9]{6}\\.(txt|bin)")) {
+                        long size = file.length();
+                        if (file.delete()) removed += size;
+                    }
+                }
+            }
+            textFile = null; rawFile = null; txFile = null;
+            android.widget.Toast.makeText(this, "Registros removidos: " + (removed / 1024) + " KiB", 1).show();
+        });
         applyQuality.setOnClickListener(v -> {
-            if (!running.get() || !videoStarted) { appendLog("Selecione a qualidade e inicie o espelhamento."); return; }
+            if (!running.get() || !videoStarted) { qualityFeedback.setText("Inicie o espelhamento primeiro."); return; }
+            qualityFeedback.setText("Solicitando troca de qualidade...");
             Intent change = new Intent(this, MirrorProjectionService.class);
             change.setAction(MirrorProjectionService.ACTION_QUALITY);
-            change.putExtra("quality_profile", qualityProfile);
+            int selected = qualityPicker.getSelectedItemPosition();
+            change.putExtra("quality_profile", selected >= 4 ? selected + 1 : selected);
             startService(change);
         });
         Button gameButton = button("MODO JOGO — DESATIVADO", PANEL, INK);
@@ -957,15 +982,14 @@ public final class MainActivity extends Activity {
             videoFrames = 0;
             videoBytes = 0;
             txLimitWarned = false;
+            saveDiagnostics = !videoModeRequested;
             String stamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
             File dir = getExternalFilesDir(null);
             if (dir == null) dir = getFilesDir();
             textFile = new File(dir, "NURA_LD36_" + stamp + ".txt");
             rawFile = new File(dir, "NURA_LD36_RX_" + stamp + ".bin");
             txFile = new File(dir, "NURA_LD36_TX_" + stamp + ".bin");
-            textFile.createNewFile();
-            rawFile.createNewFile();
-            txFile.createNewFile();
+            if (saveDiagnostics) { textFile.createNewFile(); rawFile.createNewFile(); txFile.createNewFile(); }
             totalBytes = 0;
             chunks = 0;
             metricsView.setText("0 bytes  •  0 leituras USB");
@@ -1180,7 +1204,7 @@ public final class MainActivity extends Activity {
         long reads = 0;
         boolean rawLimitLogged = false;
         byte[] buffer = new byte[16384];
-        try (FileOutputStream raw = new FileOutputStream(targetRaw)) {
+        try (FileOutputStream raw = saveDiagnostics ? new FileOutputStream(targetRaw) : null) {
             while (running.get() && generation == session) {
                 int count = in.read(buffer);
                 if (count < 0) {
@@ -1192,10 +1216,10 @@ public final class MainActivity extends Activity {
                 bytes += count;
                 probe.add(buffer, count);
                 if (activeSession != null) activeSession.accept(buffer, count);
-                if (bytes - count < RAW_CAPTURE_LIMIT) {
+                if (raw != null && bytes - count < RAW_CAPTURE_LIMIT) {
                     int canWrite = (int) Math.min(count, RAW_CAPTURE_LIMIT - (bytes - count));
                     raw.write(buffer, 0, canWrite);
-                } else if (!rawLimitLogged) {
+                } else if (raw != null && !rawLimitLogged) {
                     rawLimitLogged = true;
                     logFromWorker(session, "Limite de captura BIN (8 MiB) atingido; RX continua sem salvar bytes extras.");
                 }
@@ -1249,11 +1273,11 @@ public final class MainActivity extends Activity {
             if (!running.get() || session != generation) throw new IOException("USB nao conectado");
             output.write(data);
             output.flush();
-            if (targetTx.length() + data.length <= TX_BIN_LIMIT) {
+            if (saveDiagnostics && targetTx.length() + data.length <= TX_BIN_LIMIT) {
                 try (FileOutputStream tx = new FileOutputStream(targetTx, true)) {
                     tx.write(data);
                 }
-            } else if (!txLimitWarned) {
+            } else if (saveDiagnostics && !txLimitWarned) {
                 txLimitWarned = true;
                 logFromWorker(session, "Limite 32MiB arquivo TX atingido; transmissao USB continua.");
             }
@@ -1305,7 +1329,7 @@ public final class MainActivity extends Activity {
 
     private void appendSessionSummary(String summary) {
         File destination = textFile;
-        if (destination == null) return;
+        if (!saveDiagnostics || destination == null) return;
         try (FileOutputStream out = new FileOutputStream(destination, true)) {
             out.write(("[FINAL] " + summary + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
         } catch (IOException ignored) { }
@@ -1436,6 +1460,7 @@ public final class MainActivity extends Activity {
     }
 
     private void appendLog(String message) {
+        if (qualityFeedback != null && message.contains("QUALIDADE:")) qualityFeedback.setText(message.substring(message.indexOf("QUALIDADE:")));
         String time = new SimpleDateFormat("HH:mm:ss.SSS", Locale.US).format(new Date());
         String entry = "[" + time + "] " + message + "\n";
         visibleLog.append(entry);
@@ -1443,7 +1468,7 @@ public final class MainActivity extends Activity {
             visibleLog.delete(0, Math.max(0, visibleLog.length() - 28000));
         }
         if (logView != null) logView.setText(visibleLog.toString());
-        if (textFile != null && textFile.length() < TEXT_CAPTURE_LIMIT) {
+        if (saveDiagnostics && textFile != null && textFile.length() < TEXT_CAPTURE_LIMIT) {
             try (FileOutputStream log = new FileOutputStream(textFile, true)) {
                 log.write(entry.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             } catch (IOException ignored) { }
