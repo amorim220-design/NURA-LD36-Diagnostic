@@ -232,7 +232,7 @@ public final class MainActivity extends Activity {
         TextView title = text("LD36 Diagnostic", 28, INK, Typeface.BOLD);
         title.setPadding(0, dp(7), 0, dp(5));
         root.addView(title);
-        TextView subtitle = text("VERSÃO 4.0.0 • HÍBRIDO COM INVERSÃO VDAT (EXPERIMENTAL)", 13, ACCENT, Typeface.BOLD);
+        TextView subtitle = text("VERSÃO 4.1.0 • PERFIS NATIVOS (EXPERIMENTAL)", 13, ACCENT, Typeface.BOLD);
         root.addView(subtitle);
 
         LinearLayout statusCard = columnCard();
@@ -282,7 +282,7 @@ public final class MainActivity extends Activity {
             "GIRO RÁPIDO v2.6 — GPU sem segurar quadros",
             "RETRATO NÍTIDO v2.7 — GPU 90° + H264 fixo (experimental)",
             "HÍBRIDO v3.2 — vertical v2.2 + horizontal v2.7 (reinicia ao girar)",
-            "HÍBRIDO v4.0 — inversão VDAT automática, encoder fixo (experimental)"
+            "HÍBRIDO v4.1 — partida nativa, giro sem troca de encoder (experimental)"
         };
         ArrayAdapter<String> fitAdapter = new ArrayAdapter<>(this,
             android.R.layout.simple_spinner_item, fitting);
@@ -755,12 +755,12 @@ public final class MainActivity extends Activity {
                     stopCapture();
                     return;
                 }
-                int encoderW = autoConsentHybridSelected ? 1280 : hybridNativeSelected ? (portrait ? nativePortraitWidth(actualW,actualH) : 1280) :
+                int encoderW = autoConsentHybridSelected ? (portrait ? nativePortraitWidth(actualW,actualH) : 1280) : hybridNativeSelected ? (portrait ? nativePortraitWidth(actualW,actualH) : 1280) :
                     (fixedCanvasSelected ? 1280 :
                     ((nativePortraitAspectTestSelected || ((dualNativeSafeSelected || liveNativeSelected) && portrait)) ?
                     nativePortraitWidth(actualW,actualH) :
                     ((fillTvSelected || directTvSelected) ? 1280 : (portrait ? 720 : 1280))));
-                int encoderH = autoConsentHybridSelected ? 576 : hybridNativeSelected ? (portrait ? 1280 : 576) :
+                int encoderH = autoConsentHybridSelected ? (portrait ? 1280 : 576) : hybridNativeSelected ? (portrait ? 1280 : 576) :
                     (fixedCanvasSelected ? 576 :
                     (nativeAspectTestSelected || ((safeAutoHandoffSelected || dualNativeSafeSelected || liveNativeSelected) && !portrait))
                     ? nativeLandscapeHeight(actualW, actualH) :
@@ -779,14 +779,14 @@ public final class MainActivity extends Activity {
                 intent.putExtra(MirrorProjectionService.EXTRA_AUTO_ORIGINAL, autoOriginalSelected);
                 intent.putExtra(MirrorProjectionService.EXTRA_VDAT_ANGLE, vdatAngleSelected);
                 intent.putExtra(MirrorProjectionService.EXTRA_LIVE_NATIVE, liveNativeSelected && !autoConsentHybridSelected);
-                intent.putExtra(MirrorProjectionService.EXTRA_FIXED_CANVAS, fixedCanvasSelected || autoConsentHybridSelected || (hybridNativeSelected && !portrait));
-                intent.putExtra(MirrorProjectionService.EXTRA_FAST_CANVAS, fastCanvasSelected || autoConsentHybridSelected || (hybridNativeSelected && !portrait));
-                intent.putExtra(MirrorProjectionService.EXTRA_PORTRAIT_ROTATE, portraitRotateSelected || autoConsentHybridSelected || (hybridNativeSelected && !portrait));
+                intent.putExtra(MirrorProjectionService.EXTRA_FIXED_CANVAS, fixedCanvasSelected || (hybridNativeSelected && !portrait));
+                intent.putExtra(MirrorProjectionService.EXTRA_FAST_CANVAS, fastCanvasSelected || (hybridNativeSelected && !portrait));
+                intent.putExtra(MirrorProjectionService.EXTRA_PORTRAIT_ROTATE, !autoConsentHybridSelected && (portraitRotateSelected || (hybridNativeSelected && !portrait)));
                 vdatAngleDegrees=(nativeAspectTestSelected || safeAutoHandoffSelected ||
                     nativePortraitAspectTestSelected || dualNativeSafeSelected || liveNativeSelected || fixedCanvasSelected || hybridNativeSelected) ? 90 : 0;
                 manualVdatAngle=(nativeAspectTestSelected || safeAutoHandoffSelected ||
                     nativePortraitAspectTestSelected || dualNativeSafeSelected || liveNativeSelected || fixedCanvasSelected || hybridNativeSelected) ? 90 : 0;
-                if (autoConsentHybridSelected && portrait) { vdatAngleDegrees=0; manualVdatAngle=0; }
+                if (autoConsentHybridSelected) { vdatAngleDegrees=90; manualVdatAngle=90; }
                 initialProfilePortrait=portrait;
                 handoffPending=false;
                 profileInitialEncoderWidth=encoderW;
@@ -799,7 +799,7 @@ public final class MainActivity extends Activity {
                 vdatAngleFrames180=0;vdatAngleFrames270=0;
                 vdatAngleConfigs=0;vdatAngleIdrs=0;
                 vdatAngleAwaitFirstPacket=(nativeAspectTestSelected || safeAutoHandoffSelected || nativePortraitAspectTestSelected || dualNativeSafeSelected || liveNativeSelected || fixedCanvasSelected || hybridNativeSelected) ? 90 : -1;
-                if(autoConsentHybridSelected) { vdatAngleAwaitFirstPacket=vdatAngleDegrees; appendLog("V40: encoder fixo, VDAT inicial="+vdatAngleDegrees+", sem novo consentimento."); }
+                if(autoConsentHybridSelected) { vdatAngleAwaitFirstPacket=vdatAngleDegrees; appendLog("V41: perfil nativo, encoder fixo, VDAT inicial="+vdatAngleDegrees+", sem novo consentimento."); }
                 else if(hybridNativeSelected) appendLog("v3.2 HIBRIDO CAPTURA: "+
                     (portrait ? "v2.2 RETRATO nativo" : "v2.7 PAISAGEM GPU0 H2641280x576")+
                     "; na proxima rotacao serao solicitados parada segura e novo consentimento.");
@@ -986,12 +986,12 @@ public final class MainActivity extends Activity {
                     if(session!=generation || !videoStarted || !vdatAngleSelected) return;
                     if(hybridNativeSelected) {
                         if (autoConsentHybridSelected) {
-                            int next = height >= width ? 0 : 90;
+                            int next = 90;
                             if (vdatAngleDegrees != next) {
                                 vdatAngleDegrees = next;
                                 vdatAngleChanges++;
                                 vdatAngleAwaitFirstPacket = next;
-                                logFromWorker(session, "V40 INVERSAO VDAT: " + next + " graus; encoder fixo.");
+                                logFromWorker(session, "V41 VDAT: " + next + " graus; encoder fixo.");
                             }
                             return;
                         }
@@ -1272,11 +1272,19 @@ public final class MainActivity extends Activity {
         if (!running.get() && descriptor == null) return;
         running.set(false);
         generation++;
-        closeResources();
-        setStatus("Captura parada", WARNING);
-        connectButton.setEnabled(accessory != null);
+        final int stoppedGeneration = generation;
+        setStatus("Encerrando captura", WARNING);
+        connectButton.setEnabled(false);
         stopButton.setEnabled(false);
-        appendLog("Captura interrompida pelo usuário.");
+        new Thread(() -> {
+            closeResources();
+            runOnUiThread(() -> {
+                if (generation != stoppedGeneration || isFinishing()) return;
+                setStatus("Captura parada", WARNING);
+                connectButton.setEnabled(accessory != null);
+                appendLog("Captura interrompida pelo usuário.");
+            });
+        }, "nura-usb-stop").start();
     }
 
     private void closeResources() {
