@@ -45,6 +45,21 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * No MediaProjection, no privileged APIs, no root and NO outgoing protocol data.
  */
 public final class MainActivity extends Activity {
+    private TextView audioStatus;
+    private android.media.AudioManager audioManager;
+    private android.media.AudioDeviceCallback audioCallback;
+    private void refreshAudioStatus() {
+        if (audioStatus == null || audioManager == null) return;
+        String name = "";
+        for (android.media.AudioDeviceInfo device : audioManager.getDevices(android.media.AudioManager.GET_DEVICES_OUTPUTS)) {
+            int type = device.getType();
+            if (type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP || type == android.media.AudioDeviceInfo.TYPE_BLE_HEADSET || type == android.media.AudioDeviceInfo.TYPE_BLE_SPEAKER) {
+                name = device.getProductName().toString(); break;
+            }
+        }
+        audioStatus.setText((name.isEmpty() ? "Bluetooth: nenhum dispositivo de mídia disponível" : "Bluetooth disponível: " + name) + "\nVolume: " + audioManager.getStreamVolume(android.media.AudioManager.STREAM_MUSIC) + "/" + audioManager.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC));
+    }
+
     private static final String ACTION_USB_PERMISSION = "com.nura.ld36diagnostic.USB_PERMISSION";
     private static final int REQ_EXPORT_TEXT = 4001;
     private static final int REQ_PROJECTION = 4004;
@@ -185,6 +200,7 @@ public final class MainActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
+        refreshAudioStatus();
         activityResumed=true;
         if (!running.get()) discoverAccessory();
     }
@@ -217,6 +233,7 @@ public final class MainActivity extends Activity {
     @Override protected void onDestroy() {
         stopCapture();
         unregisterReceiver(usbEvents);
+        if (audioManager != null && audioCallback != null) audioManager.unregisterAudioDeviceCallback(audioCallback);
         super.onDestroy();
     }
 
@@ -423,6 +440,29 @@ public final class MainActivity extends Activity {
             appendLog("Modo Jogo: válido na próxima sessão automática.");
         });
         addToRoot(root, gameButton, 8);
+        LinearLayout audioCard = columnCard();
+        addToRoot(root, audioCard, 12);
+        audioCard.addView(text("ÁUDIO DA TV — BLUETOOTH", 12, ACCENT, Typeface.BOLD));
+        audioManager = (android.media.AudioManager) getSystemService(Context.AUDIO_SERVICE);
+        audioStatus = text("", 13, INK, Typeface.NORMAL);
+        audioCard.addView(audioStatus);
+        Button audioConnect = button("CONECTAR ÁUDIO BLUETOOTH", PANEL, INK);
+        audioCard.addView(audioConnect);
+        audioConnect.setOnClickListener(v -> startActivity(new Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS)));
+        LinearLayout volumeRow = new LinearLayout(this);
+        Button quieter = button("VOLUME −", PANEL, INK);
+        Button louder = button("VOLUME +", PANEL, INK);
+        addButton(volumeRow, quieter);
+        addButton(volumeRow, louder);
+        audioCard.addView(volumeRow);
+        quieter.setOnClickListener(v -> { audioManager.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, android.media.AudioManager.ADJUST_LOWER, android.media.AudioManager.FLAG_SHOW_UI); refreshAudioStatus(); });
+        louder.setOnClickListener(v -> { audioManager.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, android.media.AudioManager.ADJUST_RAISE, android.media.AudioManager.FLAG_SHOW_UI); refreshAudioStatus(); });
+        audioCallback = new android.media.AudioDeviceCallback() {
+            @Override public void onAudioDevicesAdded(android.media.AudioDeviceInfo[] devices) { refreshAudioStatus(); }
+            @Override public void onAudioDevicesRemoved(android.media.AudioDeviceInfo[] devices) { refreshAudioStatus(); }
+        };
+        audioManager.registerAudioDeviceCallback(audioCallback, new android.os.Handler(android.os.Looper.getMainLooper()));
+        refreshAudioStatus();
         addToRoot(root, videoButton, 12);
         Button testAngle0 = button("VDAT 0° (v1.8)", PANEL, INK);
         Button testAngle90 = button("VDAT 90° (v1.8)", PANEL, INK);
