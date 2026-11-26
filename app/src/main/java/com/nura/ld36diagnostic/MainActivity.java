@@ -607,6 +607,7 @@ public final class MainActivity extends Activity {
     // Therefore a physical orientation switch ends the old capture and
     // requires a fresh user tap to begin the other, independently negotiated profile.
     private void scheduleSafeOrientationHandoff(final int session, final boolean targetPortrait) {
+        if (autoConsentHybridSelected) return; // V38: keep the authorized projection alive.
         if (!(safeAutoHandoffSelected || dualNativeSafeSelected || hybridNativeSelected) || handoffPending || !videoStarted || !running.get()) return;
         if (initialProfilePortrait == targetPortrait) return;
         handoffPending = true;
@@ -777,10 +778,10 @@ public final class MainActivity extends Activity {
                 intent.putExtra(MirrorProjectionService.EXTRA_DIRECT_TV, directTvSelected);
                 intent.putExtra(MirrorProjectionService.EXTRA_AUTO_ORIGINAL, autoOriginalSelected);
                 intent.putExtra(MirrorProjectionService.EXTRA_VDAT_ANGLE, vdatAngleSelected);
-                intent.putExtra(MirrorProjectionService.EXTRA_LIVE_NATIVE, liveNativeSelected);
-                intent.putExtra(MirrorProjectionService.EXTRA_FIXED_CANVAS, fixedCanvasSelected || (hybridNativeSelected && !portrait));
-                intent.putExtra(MirrorProjectionService.EXTRA_FAST_CANVAS, fastCanvasSelected || (hybridNativeSelected && !portrait));
-                intent.putExtra(MirrorProjectionService.EXTRA_PORTRAIT_ROTATE, portraitRotateSelected || (hybridNativeSelected && !portrait));
+                intent.putExtra(MirrorProjectionService.EXTRA_LIVE_NATIVE, liveNativeSelected || autoConsentHybridSelected);
+                intent.putExtra(MirrorProjectionService.EXTRA_FIXED_CANVAS, fixedCanvasSelected || (hybridNativeSelected && !portrait && !autoConsentHybridSelected));
+                intent.putExtra(MirrorProjectionService.EXTRA_FAST_CANVAS, fastCanvasSelected || (hybridNativeSelected && !portrait && !autoConsentHybridSelected));
+                intent.putExtra(MirrorProjectionService.EXTRA_PORTRAIT_ROTATE, portraitRotateSelected || (hybridNativeSelected && !portrait && !autoConsentHybridSelected));
                 vdatAngleDegrees=(nativeAspectTestSelected || safeAutoHandoffSelected ||
                     nativePortraitAspectTestSelected || dualNativeSafeSelected || liveNativeSelected || fixedCanvasSelected || hybridNativeSelected) ? 90 : 0;
                 manualVdatAngle=(nativeAspectTestSelected || safeAutoHandoffSelected ||
