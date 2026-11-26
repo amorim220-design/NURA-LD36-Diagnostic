@@ -34,6 +34,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Requires an active foreground notification while capturing.
  */
 public final class MirrorProjectionService extends Service {
+    public static final String ACTION_QUALITY = "com.nura.ld36diagnostic.QUALITY";
+    private int baseEncoderW, baseEncoderH, currentQuality;
     public static final String ACTION_START = "com.nura.ld36diagnostic.START_VIDEO";
     public static final String ACTION_STOP = "com.nura.ld36diagnostic.STOP_VIDEO";
     public static final String ACTION_REFRESH = "com.nura.ld36diagnostic.REFRESH_DISPLAY";
@@ -111,6 +113,10 @@ public final class MirrorProjectionService extends Service {
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent == null) { stopSelf(); return START_NOT_STICKY; }
+        if (ACTION_QUALITY.equals(intent.getAction())) {
+            changeQuality(intent.getIntExtra("quality_profile", 0));
+            return START_NOT_STICKY;
+        }
         if (ACTION_RESET.equals(intent.getAction())) {
             correctionDegrees=0;
             if (capturing.get() && cropRenderer != null) {
@@ -192,6 +198,10 @@ public final class MirrorProjectionService extends Service {
             MediaFormat fmt = MediaFormat.createVideoFormat("video/avc", width, height);
             fmt.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
             int quality = intent.getIntExtra("quality_profile", 0);
+            currentQuality = quality;
+            int edge = qualityEdge(quality);
+            baseEncoderW = Math.round(width * 1280f / edge / 16f) * 16;
+            baseEncoderH = Math.round(height * 1280f / edge / 16f) * 16;
             int bitrate = quality == 1 ? 2000000 : quality == 2 ? 8000000 : quality == 3 ? 10000000 : quality == 4 ? 12000000 : quality == 5 ? 6000000 : (quality == 6 || quality == 7) ? 8000000 : 4000000;
             int fps = quality == 6 ? 45 : (quality == 4 || quality == 5 || quality == 7) ? 60 : 30;
             fmt.setInteger(MediaFormat.KEY_BIT_RATE, bitrate);
@@ -345,6 +355,70 @@ public final class MirrorProjectionService extends Service {
         return START_NOT_STICKY;
     }
 
+    private static int qualityEdge(int q) { return q == 1 ? 960 : (q == 3 || q == 4 || q == 6 || q == 7) ? 1920 : 1280; }
+    private void changeQuality(int q) {
+        if (!capturing.get() || stopping.get() || !fixedCanvasMode || cropRenderer == null || switchingInProgress || canvasResizeInFlight || q == currentQuality) return;
+        switchingInProgress = true;
+        final int w = Math.max(320, Math.round(baseEncoderW * qualityEdge(q) / 1280f / 16f) * 16);
+        final int h = Math.max(320, Math.round(baseEncoderH * qualityEdge(q) / 1280f / 16f) * 16);
+        final int sw = lastCaptureWidth, sh = lastCaptureHeight;
+        new Thread(() -> {
+            synchronized (this) {
+                MediaCodec next = null;
+                Surface surface = null;
+                ScreenCropRenderer renderer = null;
+                boolean committed = false;
+                try {
+                    if (!capturing.get() || stopping.get()) return;
+                    MediaFormat fmt = MediaFormat.createVideoFormat("video/avc", w, h);
+                    fmt.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
+                    fmt.setInteger(MediaFormat.KEY_BIT_RATE, q == 1 ? 2000000 : q == 2 ? 8000000 : q == 3 ? 10000000 : q == 5 ? 6000000 : (q == 6 || q == 7) ? 8000000 : 4000000);
+                    fmt.setInteger(MediaFormat.KEY_FRAME_RATE, q == 6 ? 45 : (q == 5 || q == 7) ? 60 : 30);
+                    fmt.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1);
+                    next = MediaCodec.createEncoderByType("video/avc");
+                    if (!next.getCodecInfo().getCapabilitiesForType("video/avc").isFormatSupported(fmt)) throw new IllegalArgumentException("Perfil incompatível");
+                    next.configure(fmt, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
+                    surface = next.createInputSurface();
+                    next.start();
+                    renderer = new ScreenCropRenderer(surface, sw, sh, w, h);
+                    renderer.setCorrectionDegrees(cropRenderer.getCorrectionDegrees());
+                    switchingEncoder = true;
+                    Thread oldWorker = worker;
+                    if (oldWorker != null) { oldWorker.join(2000); if (oldWorker.isAlive()) throw new IllegalStateException("Encoder ocupado"); }
+                    if (!capturing.get() || stopping.get()) return;
+                    MediaCodec old = codec;
+                    Surface oldSurface = inputSurface;
+                    ScreenCropRenderer oldRenderer = cropRenderer;
+                    try { display.setSurface(renderer.getCaptureSurface()); }
+                    catch (Exception e) { display.setSurface(oldRenderer.getCaptureSurface()); throw e; }
+                    codec = next; inputSurface = surface; cropRenderer = renderer;
+                    encoderWidth = w; encoderHeight = h; currentQuality = q;
+                    committed = true;
+                    switchingEncoder = false;
+                    worker = new Thread(this::encodeLoop, "nura-quality-live");
+                    worker.start();
+                    oldRenderer.close();
+                    try { old.stop(); } catch (Exception ignored) {}
+                    try { old.release(); } catch (Exception ignored) {}
+                    oldSurface.release();
+                    note("Qualidade ao vivo: " + w + "x" + h + "; valide imagem na TV.");
+                } catch (Exception e) {
+                    note("Troca de qualidade falhou: " + e.getMessage());
+                } finally {
+                    if (!committed) {
+                        if (renderer != null) renderer.close();
+                        if (surface != null) surface.release();
+                        if (next != null) { try { next.stop(); } catch (Exception ignored) {} try { next.release(); } catch (Exception ignored) {} }
+                        switchingEncoder = false;
+                        if (capturing.get() && !stopping.get() && (worker == null || !worker.isAlive())) { worker = new Thread(this::encodeLoop, "nura-quality-recovery"); worker.start(); }
+                    }
+                    switchingInProgress = false;
+                    handler.post(() -> refreshScreenDimensions("qualidade ao vivo"));
+                }
+            }
+        }, "nura-quality-switch").start();
+    }
+
     private void requestKeyframe() {
         MediaCodec current=codec;
         if (current == null || !capturing.get()) return;
@@ -369,7 +443,7 @@ public final class MirrorProjectionService extends Service {
 
     private void updateCaptureDimensions(int width,int height,String reason) {
         handler.post(() -> {
-            if (!capturing.get() || display == null) return;
+            if (!capturing.get() || display == null || switchingInProgress) return;
             if(width < 240 || height < 240 || width > 4096 || height > 4096)return;
             if (fixedCanvasMode) {
                 // Unlike v2.3, never stop/start MediaCodec or change its
@@ -391,7 +465,7 @@ public final class MirrorProjectionService extends Service {
                     " via "+reason+"; mantendo encoder="+encoderWidth+"x"+encoderHeight+
                     " USB e MediaProjection abertos");
                 handler.postDelayed(() -> {
-                    if(sequence!=canvasResizeGeneration || !capturing.get() ||
+                    if(sequence!=canvasResizeGeneration || !capturing.get() || switchingInProgress ||
                         !fixedCanvasMode || cropRenderer==null || display==null) return;
                     if(canvasResizeInFlight) {
                         // A resize of an earlier geometry is in flight.
