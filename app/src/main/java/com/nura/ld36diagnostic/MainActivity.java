@@ -119,7 +119,7 @@ public final class MainActivity extends Activity {
     private volatile int generation = 0;
     private volatile int qualityProfile = 0;
     private volatile int sessionQuality = 0;
-    private int qualityLongEdge() { return sessionQuality == 1 ? 960 : sessionQuality >= 3 ? 1920 : 1280; }
+    private int qualityLongEdge() { return sessionQuality == 1 ? 960 : (sessionQuality == 3 || sessionQuality == 4 || sessionQuality == 6 || sessionQuality == 7) ? 1920 : 1280; }
     private int qualityScale(int value) { return Math.max(320, Math.round(value * qualityLongEdge() / 1280f / 16f) * 16); }
     private long totalBytes = 0;
     private long chunks = 0;
@@ -236,7 +236,7 @@ public final class MainActivity extends Activity {
         TextView title = text("LD36 Diagnostic", 28, INK, Typeface.BOLD);
         title.setPadding(0, dp(7), 0, dp(5));
         root.addView(title);
-        TextView subtitle = text("VERSÃO 4.5.0 • CANVAS NATIVO (EXPERIMENTAL)", 13, ACCENT, Typeface.BOLD);
+        TextView subtitle = text("VERSÃO 4.6.0 • CANVAS NATIVO (EXPERIMENTAL)", 13, ACCENT, Typeface.BOLD);
         root.addView(subtitle);
 
         LinearLayout statusCard = columnCard();
@@ -286,7 +286,7 @@ public final class MainActivity extends Activity {
             "GIRO RÁPIDO v2.6 — GPU sem segurar quadros",
             "RETRATO NÍTIDO v2.7 — GPU 90° + H264 fixo (experimental)",
             "HÍBRIDO v3.2 — vertical v2.2 + horizontal v2.7 (reinicia ao girar)",
-            "HÍBRIDO v4.5 — qualidade gráfica (experimental)"
+            "HÍBRIDO v4.6 — qualidade e jogo (experimental)"
         };
         ArrayAdapter<String> fitAdapter = new ArrayAdapter<>(this,
             android.R.layout.simple_spinner_item, fitting);
@@ -418,9 +418,9 @@ public final class MainActivity extends Activity {
             @Override public void onNothingSelected(AdapterView<?> parent) { }
         });
         addToRoot(root, fitPicker, 7);
-        addToRoot(root, text("QUALIDADE GRÁFICA (HÍBRIDO v4.5)", 12, ACCENT, Typeface.BOLD), 12);
+        addToRoot(root, text("QUALIDADE GRÁFICA (HÍBRIDO v4.6)", 12, ACCENT, Typeface.BOLD), 12);
         Spinner qualityPicker = new Spinner(this);
-        ArrayAdapter<String> qualityAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, new String[]{"Original V44 — 1280 / 4 Mbps / 30 FPS", "Econômico — 960 / 2 Mbps / 30 FPS", "Nitidez — 1280 / 8 Mbps / 30 FPS", "Full HD proporcional — 1920 / 10 Mbps / 30 FPS", "Full HD fluido — 1920 / 12 Mbps / 60 FPS (experimental)"});
+        ArrayAdapter<String> qualityAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, new String[]{"Original V44 — 1280 / 4 Mbps / 30 FPS", "Econômico — 960 / 2 Mbps / 30 FPS", "Nitidez — 1280 / 8 Mbps / 30 FPS", "Full HD proporcional — 1920 / 10 Mbps / 30 FPS", "Full HD fluido — 1920 / 12 Mbps / 60 FPS (experimental)", "Jogo leve — 1280 / 6 Mbps / 60 FPS", "Fluido — 1920 / 8 Mbps / 45 FPS", "Full HD jogo — 1920 / 8 Mbps / 60 FPS"});
         qualityAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         qualityPicker.setAdapter(qualityAdapter);
         qualityPicker.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
@@ -428,6 +428,17 @@ public final class MainActivity extends Activity {
             public void onNothingSelected(AdapterView<?> parent) { }
         });
         addToRoot(root, qualityPicker, 7);
+        Button gameButton = button("MODO JOGO — DESATIVADO", PANEL, INK);
+        final int[] previousQuality = {0};
+        final boolean[] gameEnabled = {false};
+        gameButton.setOnClickListener(v -> {
+            if (running.get()) { appendLog("Pare a transmissão antes de alterar o Modo Jogo."); return; }
+            if (!gameEnabled[0]) { previousQuality[0] = qualityPicker.getSelectedItemPosition(); qualityPicker.setSelection(5); qualityProfile = 5; gameEnabled[0] = true; qualityPicker.setEnabled(false); }
+            else { qualityPicker.setEnabled(true); qualityPicker.setSelection(previousQuality[0]); qualityProfile = previousQuality[0]; gameEnabled[0] = false; }
+            gameButton.setText(gameEnabled[0] ? "MODO JOGO — ATIVADO" : "MODO JOGO — DESATIVADO");
+            appendLog("Modo Jogo: válido na próxima sessão HÍBRIDO v4.6.");
+        });
+        addToRoot(root, gameButton, 8);
         addToRoot(root, videoButton, 12);
         Button testAngle0 = button("VDAT 0° (v1.8)", PANEL, INK);
         Button testAngle90 = button("VDAT 90° (v1.8)", PANEL, INK);
