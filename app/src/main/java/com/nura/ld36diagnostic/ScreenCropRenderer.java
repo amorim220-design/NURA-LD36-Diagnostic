@@ -205,9 +205,9 @@ public final class ScreenCropRenderer implements AutoCloseable {
         String fragment="#extension GL_OES_EGL_image_external : require\n"+
             "precision mediump float; varying vec2 vUv; uniform samplerExternalOES uImage;"+
             "uniform vec4 uImageAdjust; uniform vec2 uStep;"+
-            "void main(){vec3 c=texture2D(uImage,vUv).rgb;"+
-            "if(uImageAdjust.w>0.001){vec3 a=texture2D(uImage,vUv+vec2(uStep.x,0.0)).rgb+texture2D(uImage,vUv-vec2(uStep.x,0.0)).rgb+texture2D(uImage,vUv+vec2(0.0,uStep.y)).rgb+texture2D(uImage,vUv-vec2(0.0,uStep.y)).rgb; c+=uImageAdjust.w*(c-a*0.25);}"+
-            "float l=dot(c,vec3(0.299,0.587,0.114)); c=mix(vec3(l),c,uImageAdjust.z); c=(c-0.5)*uImageAdjust.y+0.5+uImageAdjust.x; gl_FragColor=vec4(clamp(c,0.0,1.0),1.0);}";
+            "void main(){vec3 c=texture2D(uImage,vUv).rgb; if(uImageAdjust.w>0.001){vec2 d=uStep*0.5; vec3 smoothColor=(texture2D(uImage,vUv+d).rgb+texture2D(uImage,vUv-d).rgb+texture2D(uImage,vUv+vec2(d.x,-d.y)).rgb+texture2D(uImage,vUv+vec2(-d.x,d.y)).rgb)*0.25; c=mix(c,smoothColor,min(uImageAdjust.w*1.5,0.75));}"+
+            "if(uImageAdjust.w>0.001){vec3 a=texture2D(uImage,vUv+vec2(uStep.x,0.0)).rgb+texture2D(uImage,vUv-vec2(uStep.x,0.0)).rgb+texture2D(uImage,vUv+vec2(0.0,uStep.y)).rgb+texture2D(uImage,vUv-vec2(0.0,uStep.y)).rgb; c+=uImageAdjust.w*0.15*(c-a*0.25);}"+
+            "float l=dot(c,vec3(0.299,0.587,0.114)); c=mix(vec3(l),c,uImageAdjust.z); c=(c-0.5)*uImageAdjust.y+0.5; c=clamp(c,0.0,1.0); c=pow(c,vec3(exp2(-2.0*uImageAdjust.x))); gl_FragColor=vec4(clamp(c,0.0,1.0),1.0);}";
         int vs=shader(GLES20.GL_VERTEX_SHADER,vertex),fs=shader(GLES20.GL_FRAGMENT_SHADER,fragment);
         program=GLES20.glCreateProgram();
         GLES20.glAttachShader(program,vs);GLES20.glAttachShader(program,fs);
