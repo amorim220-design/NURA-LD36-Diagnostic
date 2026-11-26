@@ -755,12 +755,12 @@ public final class MainActivity extends Activity {
                     stopCapture();
                     return;
                 }
-                int encoderW = hybridNativeSelected ? (portrait ? nativePortraitWidth(actualW,actualH) : 1280) :
+                int encoderW = autoConsentHybridSelected ? 1280 : hybridNativeSelected ? (portrait ? nativePortraitWidth(actualW,actualH) : 1280) :
                     (fixedCanvasSelected ? 1280 :
                     ((nativePortraitAspectTestSelected || ((dualNativeSafeSelected || liveNativeSelected) && portrait)) ?
                     nativePortraitWidth(actualW,actualH) :
                     ((fillTvSelected || directTvSelected) ? 1280 : (portrait ? 720 : 1280))));
-                int encoderH = hybridNativeSelected ? (portrait ? 1280 : 576) :
+                int encoderH = autoConsentHybridSelected ? 576 : hybridNativeSelected ? (portrait ? 1280 : 576) :
                     (fixedCanvasSelected ? 576 :
                     (nativeAspectTestSelected || ((safeAutoHandoffSelected || dualNativeSafeSelected || liveNativeSelected) && !portrait))
                     ? nativeLandscapeHeight(actualW, actualH) :
@@ -778,10 +778,10 @@ public final class MainActivity extends Activity {
                 intent.putExtra(MirrorProjectionService.EXTRA_DIRECT_TV, directTvSelected);
                 intent.putExtra(MirrorProjectionService.EXTRA_AUTO_ORIGINAL, autoOriginalSelected);
                 intent.putExtra(MirrorProjectionService.EXTRA_VDAT_ANGLE, vdatAngleSelected);
-                intent.putExtra(MirrorProjectionService.EXTRA_LIVE_NATIVE, liveNativeSelected || autoConsentHybridSelected);
-                intent.putExtra(MirrorProjectionService.EXTRA_FIXED_CANVAS, fixedCanvasSelected || (hybridNativeSelected && !portrait && !autoConsentHybridSelected));
-                intent.putExtra(MirrorProjectionService.EXTRA_FAST_CANVAS, fastCanvasSelected || (hybridNativeSelected && !portrait && !autoConsentHybridSelected));
-                intent.putExtra(MirrorProjectionService.EXTRA_PORTRAIT_ROTATE, portraitRotateSelected || (hybridNativeSelected && !portrait && !autoConsentHybridSelected));
+                intent.putExtra(MirrorProjectionService.EXTRA_LIVE_NATIVE, liveNativeSelected && !autoConsentHybridSelected);
+                intent.putExtra(MirrorProjectionService.EXTRA_FIXED_CANVAS, fixedCanvasSelected || autoConsentHybridSelected || (hybridNativeSelected && !portrait));
+                intent.putExtra(MirrorProjectionService.EXTRA_FAST_CANVAS, fastCanvasSelected || autoConsentHybridSelected || (hybridNativeSelected && !portrait));
+                intent.putExtra(MirrorProjectionService.EXTRA_PORTRAIT_ROTATE, portraitRotateSelected || autoConsentHybridSelected || (hybridNativeSelected && !portrait));
                 vdatAngleDegrees=(nativeAspectTestSelected || safeAutoHandoffSelected ||
                     nativePortraitAspectTestSelected || dualNativeSafeSelected || liveNativeSelected || fixedCanvasSelected || hybridNativeSelected) ? 90 : 0;
                 manualVdatAngle=(nativeAspectTestSelected || safeAutoHandoffSelected ||
