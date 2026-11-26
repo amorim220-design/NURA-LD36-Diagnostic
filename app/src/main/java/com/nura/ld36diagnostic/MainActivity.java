@@ -463,6 +463,49 @@ public final class MainActivity extends Activity {
             change.putExtra("quality_profile", selected >= 4 ? selected + 1 : selected);
             startService(change);
         });
+        LinearLayout imageCard = columnCard();
+        addToRoot(root,imageCard,12);
+        imageCard.addView(text("IMAGEM DA TV — FPS INALTERADO",12,ACCENT,Typeface.BOLD));
+        final int[] imageValues = {50,50,50,0};
+        final android.widget.SeekBar[] bars = new android.widget.SeekBar[4];
+        final String[] labels = {"Brilho","Contraste","Saturação","Nitidez"};
+        Runnable applyImage = () -> {
+            if (!videoStarted || !running.get()) return;
+            Intent i = new Intent(this,MirrorProjectionService.class).setAction(MirrorProjectionService.ACTION_IMAGE);
+            i.putExtra("brightness",(imageValues[0]-50)/100f);
+            i.putExtra("contrast",0.5f+imageValues[1]/100f);
+            i.putExtra("saturation",imageValues[2]/50f);
+            i.putExtra("sharpness",imageValues[3]/200f);
+            startService(i);
+        };
+        for(int k=0;k<4;k++){
+            final int index=k;
+            TextView label=text(labels[k]+" "+imageValues[k]+"%",13,INK,Typeface.NORMAL);
+            imageCard.addView(label);
+            android.widget.SeekBar bar=new android.widget.SeekBar(this);
+            bars[k]=bar; bar.setMax(100);bar.setProgress(imageValues[k]);imageCard.addView(bar);
+            bar.setOnSeekBarChangeListener(new android.widget.SeekBar.OnSeekBarChangeListener(){
+                public void onProgressChanged(android.widget.SeekBar v,int p,boolean user){imageValues[index]=p;label.setText(labels[index]+" "+p+"%");}
+                public void onStartTrackingTouch(android.widget.SeekBar v){}
+                public void onStopTrackingTouch(android.widget.SeekBar v){applyImage.run();}
+            });
+        }
+        Button resetImage=button("RESTAURAR IMAGEM",PANEL,INK);
+        imageCard.addView(resetImage);
+        resetImage.setOnClickListener(v->{for(int k=0;k<4;k++)bars[k].setProgress(k==3?0:50);applyImage.run();});
+        Spinner compression=new Spinner(this);
+        compression.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"4 Mbps","6 Mbps","8 Mbps","10 Mbps","12 Mbps"}));
+        imageCard.addView(compression);
+        Button applyCompression=button("APLICAR COMPRESSÃO — SEM MUDAR FPS",PANEL,INK);
+        imageCard.addView(applyCompression);
+        applyCompression.setOnClickListener(v->{
+            if(!videoStarted || !running.get()){qualityFeedback.setText("Inicie o espelhamento primeiro.");return;}
+            Intent i=new Intent(this,MirrorProjectionService.class).setAction(MirrorProjectionService.ACTION_IMAGE);
+            i.putExtra("brightness",(imageValues[0]-50)/100f);i.putExtra("contrast",0.5f+imageValues[1]/100f);
+            i.putExtra("saturation",imageValues[2]/50f);i.putExtra("sharpness",imageValues[3]/200f);
+            i.putExtra("bitrate",(4+2*compression.getSelectedItemPosition())*1000000);
+            startService(i);
+        });
         Button gameButton = button("MODO JOGO — DESATIVADO", PANEL, INK);
         final int[] previousQuality = {0};
         final boolean[] gameEnabled = {false};
