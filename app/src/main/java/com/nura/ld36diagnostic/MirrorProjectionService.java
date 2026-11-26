@@ -34,6 +34,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Requires an active foreground notification while capturing.
  */
 public final class MirrorProjectionService extends Service {
+    private int colorRangeProfile;
+    private void applyColorRange(MediaFormat f) {
+        if(colorRangeProfile==0) return;
+        f.setInteger(MediaFormat.KEY_COLOR_STANDARD,MediaFormat.COLOR_STANDARD_BT709);
+        f.setInteger(MediaFormat.KEY_COLOR_TRANSFER,MediaFormat.COLOR_TRANSFER_SDR_VIDEO);
+        f.setInteger(MediaFormat.KEY_COLOR_RANGE,colorRangeProfile==2?MediaFormat.COLOR_RANGE_FULL:MediaFormat.COLOR_RANGE_LIMITED);
+    }
     public static final String ACTION_IMAGE = "com.nura.ld36diagnostic.IMAGE";
     private volatile float[] imageAdjust = {0f,1f,1f,0f};
     public static final String ACTION_QUALITY = "com.nura.ld36diagnostic.QUALITY";
@@ -210,6 +217,8 @@ public final class MirrorProjectionService extends Service {
             MediaFormat fmt = MediaFormat.createVideoFormat("video/avc", width, height);
             fmt.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
             int quality = intent.getIntExtra("quality_profile", 0);
+            colorRangeProfile=intent.getIntExtra("color_range",0);
+            applyColorRange(fmt);
             currentQuality = quality;
             int edge = qualityEdge(quality);
             baseEncoderW = Math.round(width * 1280f / edge / 16f) * 16;
@@ -394,6 +403,7 @@ public final class MirrorProjectionService extends Service {
                     fmt.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1);
                     next = MediaCodec.createEncoderByType("video/avc");
                     if (!next.getCodecInfo().getCapabilitiesForType("video/avc").isFormatSupported(fmt)) throw new IllegalArgumentException("Perfil incompatível");
+                    applyColorRange(fmt);
                     next.configure(fmt, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
                     surface = next.createInputSurface();
                     next.start();
@@ -726,6 +736,7 @@ public final class MirrorProjectionService extends Service {
                 format.setInteger(MediaFormat.KEY_FRAME_RATE,30);
                 format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL,1);
                 next=MediaCodec.createEncoderByType("video/avc");
+                applyColorRange(format);
                 next.configure(format,null,null,MediaCodec.CONFIGURE_FLAG_ENCODE);
                 nextSurface=next.createInputSurface();
                 next.start();
