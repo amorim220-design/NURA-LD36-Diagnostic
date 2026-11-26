@@ -368,6 +368,11 @@ public final class MirrorProjectionService extends Service {
                 // Unlike v2.3, never stop/start MediaCodec or change its
                 // encoded geometry/SPS/PPS. Android capture -> GPU -> FIXED H264.
                 if (width==lastCaptureWidth && height==lastCaptureHeight) return;
+                // Notify hybrid handoff even when GPU keeps the encoder fixed.
+                DisplayManager orientationManager=(DisplayManager)getSystemService(DISPLAY_SERVICE);
+                Display orientationDisplay=orientationManager==null ? null : orientationManager.getDisplay(Display.DEFAULT_DISPLAY);
+                VideoSink orientationSink=receiver;
+                if(orientationSink!=null) orientationSink.onOrientation(orientationDisplay==null ? 0 : orientationDisplay.getRotation()*90,width,height);
                 if (fastCanvasMode && width==pendingCanvasWidth &&
                     height==pendingCanvasHeight) return; // coalesce duplicate listeners
                 if (fastCanvasMode) {
