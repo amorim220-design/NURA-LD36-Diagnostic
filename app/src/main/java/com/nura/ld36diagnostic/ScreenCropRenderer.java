@@ -32,6 +32,9 @@ public final class ScreenCropRenderer implements AutoCloseable {
     private int textureId;
     private int program;
     private int attributePosition, attributeUv, uniformTexture, uniformMatrix;
+    private int uniformImage, uniformStep;
+    private volatile float[] image = {0f,1f,1f,0f};
+    public void setImage(float b,float c,float s,float n) { image = new float[]{b,c,s,n}; }
     private final float[] textureMatrix = new float[16];
     private final java.nio.FloatBuffer pos = asBuffer(new float[]{-1,-1,1,-1,-1,1,1,1});
     private volatile int displayWidth,displayHeight;
@@ -201,7 +204,10 @@ public final class ScreenCropRenderer implements AutoCloseable {
             "vUv=(uTex*vec4(aUv,0.0,1.0)).xy;}";
         String fragment="#extension GL_OES_EGL_image_external : require\n"+
             "precision mediump float; varying vec2 vUv; uniform samplerExternalOES uImage;"+
-            "void main(){gl_FragColor=texture2D(uImage,vUv);}";
+            "uniform vec4 uImageAdjust; uniform vec2 uStep;"+
+            "void main(){vec3 c=texture2D(uImage,vUv).rgb;"+
+            "if(uImageAdjust.w>0.001){vec3 a=texture2D(uImage,vUv+vec2(uStep.x,0.0)).rgb+texture2D(uImage,vUv-vec2(uStep.x,0.0)).rgb+texture2D(uImage,vUv+vec2(0.0,uStep.y)).rgb+texture2D(uImage,vUv-vec2(0.0,uStep.y)).rgb; c+=uImageAdjust.w*(c-a*0.25);}"+
+            "float l=dot(c,vec3(0.299,0.587,0.114)); c=mix(vec3(l),c,uImageAdjust.z); c=(c-0.5)*uImageAdjust.y+0.5+uImageAdjust.x; gl_FragColor=vec4(clamp(c,0.0,1.0),1.0);}";
         int vs=shader(GLES20.GL_VERTEX_SHADER,vertex),fs=shader(GLES20.GL_FRAGMENT_SHADER,fragment);
         program=GLES20.glCreateProgram();
         GLES20.glAttachShader(program,vs);GLES20.glAttachShader(program,fs);
@@ -213,6 +219,8 @@ public final class ScreenCropRenderer implements AutoCloseable {
         attributeUv=GLES20.glGetAttribLocation(program,"aUv");
         uniformMatrix=GLES20.glGetUniformLocation(program,"uTex");
         uniformTexture=GLES20.glGetUniformLocation(program,"uImage");
+        uniformImage=GLES20.glGetUniformLocation(program,"uImageAdjust");
+        uniformStep=GLES20.glGetUniformLocation(program,"uStep");
         // No crop. Black bars are intentional if handset and TV ratios differ.
         updateGeometry(sourceWidth,sourceHeight);
         GLES20.glViewport(0,0,encodedWidth,encodedHeight);
@@ -254,6 +262,8 @@ public final class ScreenCropRenderer implements AutoCloseable {
             GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
             GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES,textureId);
             GLES20.glUniform1i(uniformTexture,0);
+            GLES20.glUniform4fv(uniformImage,1,image,0);
+            GLES20.glUniform2f(uniformStep,1f/displayWidth,1f/displayHeight);
             GLES20.glUniformMatrix4fv(uniformMatrix,1,false,textureMatrix,0);
             pos.position(0);uv.position(0);
             GLES20.glEnableVertexAttribArray(attributePosition);
