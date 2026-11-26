@@ -34,6 +34,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Requires an active foreground notification while capturing.
  */
 public final class MirrorProjectionService extends Service {
+    public static final String ACTION_IMAGE = "com.nura.ld36diagnostic.IMAGE";
+    private volatile float[] imageAdjust = {0f,1f,1f,0f};
     public static final String ACTION_QUALITY = "com.nura.ld36diagnostic.QUALITY";
     private int baseEncoderW, baseEncoderH, currentQuality;
     public static final String ACTION_START = "com.nura.ld36diagnostic.START_VIDEO";
@@ -113,6 +115,16 @@ public final class MirrorProjectionService extends Service {
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent == null) { stopSelf(); return START_NOT_STICKY; }
+        if (ACTION_IMAGE.equals(intent.getAction())) {
+            imageAdjust = new float[]{intent.getFloatExtra("brightness",0f),intent.getFloatExtra("contrast",1f),intent.getFloatExtra("saturation",1f),intent.getFloatExtra("sharpness",0f)};
+            ScreenCropRenderer renderer = cropRenderer;
+            if (renderer != null) renderer.setImage(imageAdjust[0],imageAdjust[1],imageAdjust[2],imageAdjust[3]);
+            if (capturing.get() && codec != null && intent.hasExtra("bitrate")) {
+                try { Bundle p = new Bundle(); p.putInt(MediaCodec.PARAMETER_KEY_VIDEO_BITRATE,intent.getIntExtra("bitrate",4000000)); codec.setParameters(p); note("QUALIDADE: compressão atualizada sem alterar FPS"); }
+                catch(Exception e) { note("QUALIDADE: bitrate rejeitado: "+e.getMessage()); }
+            }
+            return START_NOT_STICKY;
+        }
         if (ACTION_QUALITY.equals(intent.getAction())) {
             changeQuality(intent.getIntExtra("quality_profile", 0));
             return START_NOT_STICKY;
@@ -262,6 +274,7 @@ public final class MirrorProjectionService extends Service {
                 // Video codec, decoder SPS/PPS and AOA stay FIXED for entire session.
                 // GPU compositor keeps aspect ratio on a changing source geometry.
                 cropRenderer = new ScreenCropRenderer(inputSurface, sourceWidth, sourceHeight, width, height);
+                cropRenderer.setImage(imageAdjust[0],imageAdjust[1],imageAdjust[2],imageAdjust[3]);
                 if(portraitRotateMode && sourceHeight>sourceWidth) {
                     cropRenderer.setCorrectionDegrees(90);
                     note("v2.7 PORTRAIT ROTATE INICIO: GPU=90, src="+sourceWidth+"x"+sourceHeight+
@@ -386,6 +399,7 @@ public final class MirrorProjectionService extends Service {
                     next.start();
                     renderer = new ScreenCropRenderer(surface, sw, sh, w, h);
                     renderer.setCorrectionDegrees(cropRenderer.getCorrectionDegrees());
+                    renderer.setImage(imageAdjust[0],imageAdjust[1],imageAdjust[2],imageAdjust[3]);
                     switchingEncoder = true;
                     Thread oldWorker = worker;
                     if (oldWorker != null) { oldWorker.join(2000); if (oldWorker.isAlive()) throw new IllegalStateException("Encoder ocupado"); }
