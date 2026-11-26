@@ -196,6 +196,12 @@ public final class MainActivity extends Activity {
             ? "HORIZONTAL" : "VERTICAL") +
             (directTvSelected ? ". TV DIRETO: compositor do Android mantém surface fixa." :
                 ". Solicitando atualizacao da superficie."));
+        if (videoStarted && running.get() && hybridNativeSelected &&
+            (config.orientation == Configuration.ORIENTATION_PORTRAIT ||
+             config.orientation == Configuration.ORIENTATION_LANDSCAPE)) {
+            boolean portrait = config.orientation == Configuration.ORIENTATION_PORTRAIT;
+            if (portrait != initialProfilePortrait) scheduleSafeOrientationHandoff(generation, portrait);
+        }
         if (videoStarted) {
             Intent refresh = new Intent(this, MirrorProjectionService.class);
             refresh.setAction(MirrorProjectionService.ACTION_REFRESH);
@@ -226,7 +232,7 @@ public final class MainActivity extends Activity {
         TextView title = text("LD36 Diagnostic", 28, INK, Typeface.BOLD);
         title.setPadding(0, dp(7), 0, dp(5));
         root.addView(title);
-        TextView subtitle = text("VERSÃO 3.5.0 • HÍBRIDO COM PEDIDO AUTOMÁTICO (EXPERIMENTAL)", 13, ACCENT, Typeface.BOLD);
+        TextView subtitle = text("VERSÃO 3.7.0 • HÍBRIDO COM GIRO BIDIRECIONAL (EXPERIMENTAL)", 13, ACCENT, Typeface.BOLD);
         root.addView(subtitle);
 
         LinearLayout statusCard = columnCard();
@@ -276,7 +282,7 @@ public final class MainActivity extends Activity {
             "GIRO RÁPIDO v2.6 — GPU sem segurar quadros",
             "RETRATO NÍTIDO v2.7 — GPU 90° + H264 fixo (experimental)",
             "HÍBRIDO v3.2 — vertical v2.2 + horizontal v2.7 (reinicia ao girar)",
-            "HÍBRIDO v3.5 — solicita autorização automaticamente no giro (experimental)"
+            "HÍBRIDO v3.7 — giro bidirecional com autorização automática (experimental)"
         };
         ArrayAdapter<String> fitAdapter = new ArrayAdapter<>(this,
             android.R.layout.simple_spinner_item, fitting);
