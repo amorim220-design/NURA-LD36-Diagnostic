@@ -87,6 +87,8 @@ public final class MainActivity extends Activity {
     private boolean hybridNativeSelected;
     private boolean autoConsentHybridSelected;
     private boolean activityResumed;
+    private boolean projectionRequestPending;
+    private int handoffRequestEpoch;
     private volatile boolean initialProfilePortrait;
     private volatile boolean handoffPending;
     private volatile int handoffTargetSession;
@@ -633,12 +635,15 @@ public final class MainActivity extends Activity {
             // The old v3.2 manual profile selection remains unchanged.
             final boolean autoAsk=autoConsentHybridSelected && activityResumed && !isFinishing();
             stopCapture();
+            final int expectedGeneration = generation;
+            final int expectedEpoch = handoffRequestEpoch;
             if(autoAsk) {
                 appendLog("v3.5 GIRO: app visivel; abrindo DIALOGO OFICIAL de captura automaticamente. "+
                     "A permissao deve ser confirmada pelo usuario; nenhum token e reutilizado.");
                 setStatus("Confirme nova captura na janela do Android", WARNING);
                 mainHandler.postDelayed(() -> {
-                    if(!autoConsentHybridSelected || running.get() || !activityResumed || isFinishing()) {
+                    if(!autoConsentHybridSelected || running.get() || !activityResumed || isFinishing() ||
+                        generation != expectedGeneration || handoffRequestEpoch != expectedEpoch || projectionRequestPending) {
                         appendLog("v3.5 GIRO: app nao visivel ou sessao mudou; retome manualmente com ESPELHAR.");
                         return;
                     }
@@ -686,6 +691,8 @@ public final class MainActivity extends Activity {
     }
 
     private void requestProjectionConsent() {
+        if (projectionRequestPending || running.get() || isFinishing()) return;
+        projectionRequestPending = true;
         try {
             android.media.projection.MediaProjectionManager manager =
                 (android.media.projection.MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
@@ -693,6 +700,7 @@ public final class MainActivity extends Activity {
             startActivityForResult(manager.createScreenCaptureIntent(), REQ_PROJECTION);
             appendLog("Solicitada autorizacao de captura de tela do Android.");
         } catch (Exception e) {
+            projectionRequestPending = false;
             appendLog("Falha solicitando captura: " + e.getMessage());
         }
     }
@@ -1221,6 +1229,7 @@ public final class MainActivity extends Activity {
     }
 
     private void stopCapture() {
+        handoffRequestEpoch++;
         autoScanRequested = false;
         activeScanRequested = false;
         videoModeRequested = false;
@@ -1290,6 +1299,7 @@ public final class MainActivity extends Activity {
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == REQ_PROJECTION) {
+            projectionRequestPending = false;
             if (resultCode != RESULT_OK || data == null) {
                 appendLog("Captura de tela nao autorizada.");
                 return;
