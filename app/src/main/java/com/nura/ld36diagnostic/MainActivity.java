@@ -468,7 +468,7 @@ public final class MainActivity extends Activity {
         imageCard.addView(text("IMAGEM DA TV — FPS INALTERADO",12,ACCENT,Typeface.BOLD));
         final int[] imageValues = {50,50,50,0};
         final android.widget.SeekBar[] bars = new android.widget.SeekBar[4];
-        final String[] labels = {"Brilho","Contraste","Saturação","Nitidez"};
+        final String[] labels = {"Luminosidade (gamma)","Contraste","Saturação","Suavização de serrilhados"};
         Runnable applyImage = () -> {
             if (!videoStarted || !running.get()) return;
             Intent i = new Intent(this,MirrorProjectionService.class).setAction(MirrorProjectionService.ACTION_IMAGE);
