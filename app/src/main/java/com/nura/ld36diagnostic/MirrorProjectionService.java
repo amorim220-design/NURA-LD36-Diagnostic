@@ -412,7 +412,7 @@ public final class MirrorProjectionService extends Service {
                     final Surface capture=renderer.getCaptureSurface();
                     // setDefaultBufferSize can wait on EGL. NEVER block UI here.
                     new Thread(() -> {
-                        final int gpuDegrees = (portraitRotateMode && targetH>targetW) ? 90 : 0;
+                        final int gpuDegrees = encoderHeight > encoderWidth && targetW > targetH ? 90 : ((portraitRotateMode && targetH>targetW) ? 90 : 0);
                         boolean ready=renderer.updateCapturedSize(targetW,targetH,gpuDegrees);
                         handler.post(() -> {
                             try {
