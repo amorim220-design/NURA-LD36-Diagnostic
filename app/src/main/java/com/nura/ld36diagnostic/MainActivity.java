@@ -464,6 +464,15 @@ public final class MainActivity extends Activity {
             startService(change);
         });
         LinearLayout imageCard = columnCard();
+        Spinner range = new Spinner(this);
+        range.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"Faixa original","BT.709 limitada","BT.709 completa"}));
+        range.setSelection(getPreferences(0).getInt("color_range",0));
+        imageCard.addView(text("FAIXA DE CORES — aplicar na próxima transmissão",12,ACCENT,Typeface.BOLD));
+        imageCard.addView(range);
+        range.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){
+            public void onItemSelected(android.widget.AdapterView<?> p,android.view.View v,int pos,long id){getPreferences(0).edit().putInt("color_range",pos).apply();}
+            public void onNothingSelected(android.widget.AdapterView<?> p){}
+        });
         addToRoot(root,imageCard,12);
         imageCard.addView(text("IMAGEM DA TV — FPS INALTERADO",12,ACCENT,Typeface.BOLD));
         final int[] imageValues = {50,50,50,0};
@@ -895,6 +904,7 @@ public final class MainActivity extends Activity {
                 Intent intent = new Intent(this, MirrorProjectionService.class);
                 intent.setAction(MirrorProjectionService.ACTION_START);
                 intent.putExtra("quality_profile", autoConsentHybridSelected ? sessionQuality : 0);
+                intent.putExtra("color_range",getPreferences(0).getInt("color_range",0));
                 intent.putExtra(MirrorProjectionService.EXTRA_RESULT, projectionResult);
                 intent.putExtra(MirrorProjectionService.EXTRA_DATA, projectionConsent);
                 intent.putExtra(MirrorProjectionService.EXTRA_WIDTH, encoderW);
