@@ -191,10 +191,17 @@ public final class MirrorProjectionService extends Service {
             height = (height + 15) & ~15;
             MediaFormat fmt = MediaFormat.createVideoFormat("video/avc", width, height);
             fmt.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
-            fmt.setInteger(MediaFormat.KEY_BIT_RATE, 4000000);
-            fmt.setInteger(MediaFormat.KEY_FRAME_RATE, 30);
+            int quality = intent.getIntExtra("quality_profile", 0);
+            int bitrate = quality == 1 ? 2000000 : quality == 2 ? 8000000 : quality == 3 ? 10000000 : quality == 4 ? 12000000 : 4000000;
+            int fps = quality == 4 ? 60 : 30;
+            fmt.setInteger(MediaFormat.KEY_BIT_RATE, bitrate);
+            fmt.setInteger(MediaFormat.KEY_FRAME_RATE, fps);
             fmt.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1);
             codec = MediaCodec.createEncoderByType("video/avc");
+            if (quality != 0 && !codec.getCodecInfo().getCapabilitiesForType("video/avc").isFormatSupported(fmt)) {
+                throw new IllegalArgumentException("Perfil gráfico incompatível; selecione Original V44.");
+            }
+            note("Qualidade H264: " + width + "x" + height + " / " + bitrate + " bps / " + fps + " FPS");
             codec.configure(fmt, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
             inputSurface = codec.createInputSurface();
             codec.start();
